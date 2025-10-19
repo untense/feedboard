@@ -11,28 +11,36 @@ export class TaostatsClient {
 
   /**
    * Fetch current TAO price from Taostats API
+   * Uses the most recent entry from price history
    */
   async getCurrentPrice(): Promise<TaoPrice> {
     try {
-      // TODO: Replace with actual Taostats API endpoint once confirmed
-      const response = await fetch(`${this.apiUrl}/price/current`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const response = await fetch(
+        `${this.apiUrl}/api/price/history/v1?asset=TAO&page=1&limit=1`,
+        {
+          headers: {
+            'Authorization': this.apiKey,
+            'accept': 'application/json',
+          },
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`Taostats API error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const result = await response.json();
 
-      // Adapt response to our interface
-      return {
-        price: data.price || data.value || 0,
-        timestamp: data.timestamp || new Date().toISOString(),
-      };
+      // The API returns the most recent price as the first item
+      if (result.data && result.data.length > 0) {
+        const latest = result.data[0];
+        return {
+          price: parseFloat(latest.price),
+          timestamp: latest.last_updated || latest.created_at,
+        };
+      }
+
+      throw new Error('No price data available');
     } catch (error) {
       console.error('Error fetching current price:', error);
       throw new Error('Failed to fetch current TAO price');
@@ -41,37 +49,33 @@ export class TaostatsClient {
 
   /**
    * Fetch historical TAO price data from Taostats API
+   * Fetches all available historical price data (paginated)
    */
   async getHistoricalPrices(): Promise<HistoricalPriceData[]> {
     try {
-      // TODO: Replace with actual Taostats API endpoint once confirmed
-      const response = await fetch(`${this.apiUrl}/price/historical`, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      // For now, fetch a large batch. Could be enhanced to fetch all pages.
+      const response = await fetch(
+        `${this.apiUrl}/api/price/history/v1?asset=TAO&page=1&limit=1000`,
+        {
+          headers: {
+            'Authorization': this.apiKey,
+            'accept': 'application/json',
+          },
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`Taostats API error: ${response.status} ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const result = await response.json();
 
-      // Adapt response to our interface
-      if (Array.isArray(data)) {
-        return data.map(item => ({
-          date: item.date || item.timestamp,
-          price: item.price || item.value || 0,
-          volume: item.volume,
-        }));
-      }
-
-      if (data.prices && Array.isArray(data.prices)) {
-        return data.prices.map((item: any) => ({
-          date: item.date || item.timestamp,
-          price: item.price || item.value || 0,
-          volume: item.volume,
+      // Map the API response to our interface
+      if (result.data && Array.isArray(result.data)) {
+        return result.data.map((item: any) => ({
+          date: item.last_updated || item.created_at,
+          price: parseFloat(item.price),
+          volume: item.volume_24h ? parseFloat(item.volume_24h) : undefined,
         }));
       }
 
