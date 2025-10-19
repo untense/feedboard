@@ -40,3 +40,6 @@ coverage/
 
 # Temporary files
 *.tmp
+
+# Cache data
+data/

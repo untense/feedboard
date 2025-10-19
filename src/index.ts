@@ -11,6 +11,10 @@ app.use(express.json());
 // Initialize Taostats client with caching
 const taostatsClient = new TaostatsClient(config.taostats, config.taostats.cacheTTL);
 
+// Initialize the client (sets up persistent cache and background fetch)
+await taostatsClient.init();
+console.log('✓ Taostats client initialized with persistent cache');
+
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
