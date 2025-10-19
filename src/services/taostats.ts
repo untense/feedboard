@@ -11,6 +11,7 @@ export class TaostatsClient {
   private lastRequestTime: number = 0;
   private minRequestInterval: number = 22000; // 22 seconds between requests (12s minimum + 10s cushion for 5 calls/minute rate limit)
   private isFetchingInBackground: boolean = false;
+  private isFetchingCurrentPrice: boolean = false;
 
   constructor(config: TaostatsConfig, cacheTTL: number = 30000) {
     this.apiKey = config.apiKey;
@@ -25,8 +26,9 @@ export class TaostatsClient {
    */
   async init(): Promise<void> {
     await this.persistentCache.init();
-    // Start background fetch process
+    // Start background fetch processes
     this.startBackgroundFetch();
+    this.startCurrentPriceUpdates();
   }
 
   /**
@@ -47,22 +49,34 @@ export class TaostatsClient {
   }
 
   /**
-   * Fetch current TAO price from Taostats API
-   * Uses the most recent entry from price history
-   * Results are cached to respect API rate limits (5 calls/minute)
+   * Fetch current TAO price - returns cached price immediately
+   * Background process continuously updates the cache
    */
   async getCurrentPrice(): Promise<TaoPrice> {
-    const cacheKey = 'current-price';
-
-    // Check cache first
-    const cached = this.cache.get(cacheKey) as TaoPrice | undefined;
-    if (cached) {
-      console.log('Returning cached current price');
-      return cached;
-    }
-
     try {
-      console.log('Fetching fresh current price from Taostats API');
+      // Return cached data from disk
+      const cachedData = await this.persistentCache.readCurrentPrice();
+      if (cachedData) {
+        return {
+          price: cachedData.price,
+          timestamp: cachedData.timestamp,
+        };
+      }
+
+      // If no cache exists, fetch synchronously once
+      console.log('No current price cache found, fetching initial data...');
+      return await this.fetchAndCacheCurrentPrice();
+    } catch (error) {
+      console.error('Error reading current price:', error);
+      throw new Error('Failed to fetch current TAO price');
+    }
+  }
+
+  /**
+   * Fetch current price from API and cache it
+   */
+  private async fetchAndCacheCurrentPrice(): Promise<TaoPrice> {
+    try {
       await this.enforceRateLimit();
 
       const response = await fetch(
@@ -89,8 +103,10 @@ export class TaostatsClient {
           timestamp: latest.last_updated || latest.created_at,
         };
 
-        // Cache the result
-        this.cache.set(cacheKey, priceData, this.cacheTTL);
+        // Cache to disk
+        await this.persistentCache.writeCurrentPrice(priceData.price, priceData.timestamp);
+        console.log(`Current price updated: $${priceData.price} at ${priceData.timestamp}`);
+
         return priceData;
       }
 
@@ -98,6 +114,38 @@ export class TaostatsClient {
     } catch (error) {
       console.error('Error fetching current price:', error);
       throw new Error('Failed to fetch current TAO price');
+    }
+  }
+
+  /**
+   * Start background loop to continuously update current price
+   */
+  private startCurrentPriceUpdates(): void {
+    // Run background updates after a short delay
+    setTimeout(() => this.currentPriceUpdateLoop(), 2000);
+  }
+
+  /**
+   * Background loop that continuously updates current price
+   */
+  private async currentPriceUpdateLoop(): Promise<void> {
+    if (this.isFetchingCurrentPrice) return;
+
+    this.isFetchingCurrentPrice = true;
+
+    try {
+      while (true) {
+        await this.fetchAndCacheCurrentPrice();
+        // Wait 22 seconds before next update (respects rate limit)
+        await new Promise(resolve => setTimeout(resolve, this.minRequestInterval));
+      }
+    } catch (error) {
+      console.error('Current price update error:', error);
+      // Retry after a delay
+      setTimeout(() => {
+        this.isFetchingCurrentPrice = false;
+        this.currentPriceUpdateLoop();
+      }, 60000); // Retry in 1 minute
     }
   }
 
@@ -197,14 +245,16 @@ export class TaostatsClient {
 
   /**
    * Start background fetch process to fill in missing data
+   * Runs twice per day to minimize API usage
    */
   private startBackgroundFetch(): void {
-    // Run background fetch after a short delay
-    setTimeout(() => this.backgroundFetchLoop(), 5000);
+    // Run first fetch after 10 seconds
+    setTimeout(() => this.backgroundFetchLoop(), 10000);
   }
 
   /**
-   * Background loop that continuously fetches missing pages
+   * Background loop that fetches missing historical pages
+   * Runs twice per day (every 12 hours)
    */
   private async backgroundFetchLoop(): Promise<void> {
     if (this.isFetchingInBackground) return;
@@ -212,32 +262,46 @@ export class TaostatsClient {
     this.isFetchingInBackground = true;
 
     try {
-      while (true) {
-        const nextPage = await this.persistentCache.getNextPageToFetch();
+      const nextPage = await this.persistentCache.getNextPageToFetch();
 
-        if (nextPage === -1) {
-          console.log('Background fetch complete: Reached target date (August 1, 2025)');
-          break;
+      if (nextPage === -1) {
+        console.log('Background fetch complete: Reached target date (August 1, 2025)');
+        // Schedule next check in 12 hours
+        setTimeout(() => {
+          this.isFetchingInBackground = false;
+          this.backgroundFetchLoop();
+        }, 12 * 60 * 60 * 1000);
+        return;
+      }
+
+      console.log(`Background fetch: Starting page ${nextPage}`);
+      const shouldContinue = await this.fetchAndCachePage(nextPage);
+
+      if (!shouldContinue) {
+        console.log('Background fetch complete: Reached target date');
+        // Mark as complete in metadata
+        const metadata = await this.persistentCache.readMetadata();
+        if (metadata) {
+          metadata.reachedTargetDate = true;
+          await this.persistentCache.writeMetadata(metadata);
         }
-
-        console.log(`Background fetch: Starting page ${nextPage}`);
-        const shouldContinue = await this.fetchAndCachePage(nextPage);
-
-        if (!shouldContinue) {
-          console.log('Background fetch complete: Reached target date');
-          // Mark as complete in metadata
-          const metadata = await this.persistentCache.readMetadata();
-          if (metadata) {
-            metadata.reachedTargetDate = true;
-            await this.persistentCache.writeMetadata(metadata);
-          }
-          break;
-        }
+        // Schedule next check in 12 hours
+        setTimeout(() => {
+          this.isFetchingInBackground = false;
+          this.backgroundFetchLoop();
+        }, 12 * 60 * 60 * 1000);
+      } else {
+        // Continue fetching next page immediately (respecting rate limits)
+        this.isFetchingInBackground = false;
+        this.backgroundFetchLoop();
       }
     } catch (error) {
       console.error('Background fetch error:', error);
-    } finally {
-      this.isFetchingInBackground = false;
+      // Retry in 1 hour
+      setTimeout(() => {
+        this.isFetchingInBackground = false;
+        this.backgroundFetchLoop();
+      }, 60 * 60 * 1000);
     }
   }
 }

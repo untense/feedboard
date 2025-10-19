@@ -24,11 +24,13 @@ export class PersistentCache {
   private cacheDir: string;
   private csvPath: string;
   private metadataPath: string;
+  private currentPricePath: string;
 
   constructor(cacheDir: string = './data/cache') {
     this.cacheDir = cacheDir;
     this.csvPath = path.join(cacheDir, 'historical_prices.csv');
     this.metadataPath = path.join(cacheDir, 'metadata.json');
+    this.currentPricePath = path.join(cacheDir, 'current_price.json');
   }
 
   /**
@@ -210,5 +212,31 @@ export class PersistentCache {
    */
   hasReachedTargetDate(oldestDate: string): boolean {
     return oldestDate <= '2025-08-01';
+  }
+
+  /**
+   * Read current price from cache
+   */
+  async readCurrentPrice(): Promise<{ price: number; timestamp: string } | null> {
+    try {
+      const data = await fs.readFile(this.currentPricePath, 'utf-8');
+      return JSON.parse(data);
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        return null; // File doesn't exist yet
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Write current price to cache
+   */
+  async writeCurrentPrice(price: number, timestamp: string): Promise<void> {
+    await fs.writeFile(
+      this.currentPricePath,
+      JSON.stringify({ price, timestamp, lastUpdated: new Date().toISOString() }, null, 2),
+      'utf-8'
+    );
   }
 }
