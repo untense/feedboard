@@ -9,6 +9,7 @@ export const config = {
   taostats: {
     apiKey: process.env.TAOSTATS_API_KEY || '',
     apiUrl: process.env.TAOSTATS_API_URL || 'https://api.taostats.io',
+    cacheTTL: parseInt(process.env.CACHE_TTL || '30000', 10), // Default 30 seconds
   },
 };
 

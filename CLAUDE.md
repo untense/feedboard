@@ -30,7 +30,8 @@ src/
 ├── types/
 │   └── index.ts       # TypeScript type definitions
 ├── services/
-│   └── taostats.ts    # Taostats API client
+│   ├── cache.ts       # In-memory cache with TTL
+│   └── taostats.ts    # Taostats API client with caching
 └── routes/
     └── price.ts       # Price endpoints (current & historical)
 ```
@@ -49,13 +50,22 @@ The application exposes these HTTP endpoints:
 ### Configuration
 - Environment variables managed via `dotenv` in `src/config.ts`
 - Required: `TAOSTATS_API_KEY` for production
-- Optional: `PORT` (default 3000), `TAOSTATS_API_URL`
+- Optional: `PORT` (default 3000), `TAOSTATS_API_URL`, `CACHE_TTL` (default 30000ms)
 
 ### Taostats API Integration
 - Client implementation in `src/services/taostats.ts`
+- Uses actual Taostats API endpoint: `/api/price/history/v1`
+- **Rate Limit**: Taostats API allows 5 calls per minute
+- **Caching**: In-memory cache (default 30s TTL) to respect rate limits
 - Uses fetch API for HTTP requests
 - Includes error handling and response normalization
-- API endpoints are placeholders and may need adjustment based on actual Taostats API structure
+
+### Caching Strategy
+- Implementation: `src/services/cache.ts` - Simple in-memory cache with TTL
+- Default TTL: 30 seconds (configurable via `CACHE_TTL` environment variable)
+- Cache keys: `current-price` and `historical-prices`
+- **Critical for production**: Without caching, multiple concurrent users will exceed the 5 calls/minute rate limit
+- Cache behavior logged to console for debugging
 
 ### Response Formats
 - Current price: Plain text number (e.g., "42.50")

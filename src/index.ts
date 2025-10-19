@@ -8,8 +8,8 @@ const app = express();
 // Middleware
 app.use(express.json());
 
-// Initialize Taostats client
-const taostatsClient = new TaostatsClient(config.taostats);
+// Initialize Taostats client with caching
+const taostatsClient = new TaostatsClient(config.taostats, config.taostats.cacheTTL);
 
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
@@ -42,6 +42,7 @@ const PORT = config.port;
 app.listen(PORT, () => {
   console.log(`🚀 Feedboard server running on port ${PORT}`);
   console.log(`   Environment: ${config.nodeEnv}`);
+  console.log(`   Cache TTL: ${config.taostats.cacheTTL}ms`);
   console.log(`   Health check: http://localhost:${PORT}/health`);
   console.log(`   Current price: http://localhost:${PORT}/api/price/current`);
   console.log(`   Historical prices: http://localhost:${PORT}/api/price/historical`);
