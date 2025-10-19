@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init)",
+      "Bash(git remote add origin git@github.com:untense/feedboard.git)",
+      "Bash(git branch -M main)",
+      "Bash(git add .claude/ .gitignore CLAUDE.md spec.md)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nInitial commit: Add project spec and documentation\n\n- Add project specification for Feedboard API\n- Add CLAUDE.md with development guidelines\n- Add .gitignore for Node.js/TypeScript project\n- Configure git repository with main branch\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
