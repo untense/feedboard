@@ -4,33 +4,69 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Feedboard is a lightweight time-series application for accessing the Taostats.io API. It provides HTTP endpoints for cryptocurrency (TAO) price data.
+Feedboard is a lightweight time-series application for accessing the Taostats.io API. It provides HTTP endpoints for cryptocurrency (TAO) price data in CSV and plain text formats.
 
 ## Technology Stack
 
 - **Package Manager**: Yarn
 - **Language**: TypeScript
-- **Build Tool**: Vite
-- **Deployment**: Railway
-
-## API Endpoints (Planned)
-
-The application should expose the following HTTP endpoints:
-
-1. **Historical Price Data**: Complete daily historical price of TAO in CSV format
-2. **Current Price**: Current price of TAO in plain text format
+- **Runtime**: Node.js + tsx (development)
+- **Web Framework**: Express.js
+- **Deployment**: Railway (with Nixpacks)
 
 ## Development Commands
 
-Note: This project is in early stages. Standard Vite + TypeScript commands will apply once initialized:
+- `yarn dev` - Start development server with hot reload (uses tsx watch)
+- `yarn build` - Build TypeScript project for production
+- `yarn start` - Run production build
+- `yarn test` - Run tests (not yet implemented)
 
-- `yarn dev` - Start development server
-- `yarn build` - Build for production
-- `yarn test` - Run tests
-- `yarn preview` - Preview production build
+## Project Structure
+
+```
+src/
+├── index.ts           # Main application entry point with Express server
+├── config.ts          # Configuration and environment variables
+├── types/
+│   └── index.ts       # TypeScript type definitions
+├── services/
+│   └── taostats.ts    # Taostats API client
+└── routes/
+    └── price.ts       # Price endpoints (current & historical)
+```
+
+## API Endpoints
+
+The application exposes these HTTP endpoints:
+
+- `GET /health` - Health check endpoint
+- `GET /` - API information and endpoint list
+- `GET /api/price/current` - Current TAO price (plain text)
+- `GET /api/price/historical` - Historical TAO prices (CSV format)
 
 ## Architecture Notes
 
-- The application integrates with the Taostats.io API as its data source
-- Endpoints should return lightweight responses (CSV and plain text) for easy consumption
-- Time-series data handling will be a core component
+### Configuration
+- Environment variables managed via `dotenv` in `src/config.ts`
+- Required: `TAOSTATS_API_KEY` for production
+- Optional: `PORT` (default 3000), `TAOSTATS_API_URL`
+
+### Taostats API Integration
+- Client implementation in `src/services/taostats.ts`
+- Uses fetch API for HTTP requests
+- Includes error handling and response normalization
+- API endpoints are placeholders and may need adjustment based on actual Taostats API structure
+
+### Response Formats
+- Current price: Plain text number (e.g., "42.50")
+- Historical prices: CSV with headers (date, price, volume)
+
+### Module System
+- Uses ES modules (`"type": "module"` in package.json)
+- All imports require `.js` extension for TypeScript files
+
+## Railway Deployment
+
+- Configuration in `railway.json` and `nixpacks.toml`
+- Nixpacks builder with Node.js 20 and Yarn
+- Set `TAOSTATS_API_KEY` environment variable in Railway dashboard
