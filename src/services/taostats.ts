@@ -111,11 +111,12 @@ export class TaostatsClient {
       const totalPages = firstResult.pagination?.total_pages || 1;
       console.log(`Fetching ${totalPages} pages of data from August 2025...`);
 
-      // Fetch remaining pages with rate limit consideration
-      // Rate limit: 5 calls/minute = 1 call every 12 seconds to be safe
+      // Fetch remaining pages
+      // With ~100 daily records from Aug 2025, we should only need 1 page at limit=200
+      // But if needed, fetch additional pages with minimal delay
       for (let page = 2; page <= totalPages; page++) {
-        // Wait 12 seconds between requests to respect rate limit
-        await new Promise(resolve => setTimeout(resolve, 12000));
+        // Small delay to avoid overwhelming the API
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         const response = await fetch(
           `${this.apiUrl}/api/price/history/v1?asset=TAO&timestamp_start=${timestampStart}&page=${page}&limit=${limit}`,
