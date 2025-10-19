@@ -45,7 +45,7 @@ export class TaostatsClient {
         throw new Error(`Taostats API error: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json();
+      const result = await response.json() as any;
 
       // The API returns the most recent price as the first item
       if (result.data && result.data.length > 0) {
@@ -99,7 +99,7 @@ export class TaostatsClient {
         throw new Error(`Taostats API error: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json();
+      const result = await response.json() as any;
 
       // Map the API response to our interface
       if (result.data && Array.isArray(result.data)) {
