@@ -69,7 +69,7 @@ export class TaostatsClient {
 
   /**
    * Fetch historical TAO price data from Taostats API
-   * Fetches all available historical price data (paginated)
+   * Returns daily closing prices starting from August 2025
    * Results are cached to respect API rate limits (5 calls/minute)
    */
   async getHistoricalPrices(): Promise<HistoricalPriceData[]> {
@@ -84,9 +84,15 @@ export class TaostatsClient {
 
     try {
       console.log('Fetching fresh historical prices from Taostats API');
-      // For now, fetch a large batch. Could be enhanced to fetch all pages.
-      const response = await fetch(
-        `${this.apiUrl}/api/price/history/v1?asset=TAO&page=1&limit=1000`,
+
+      // August 1, 2025 00:00:00 UTC in Unix timestamp
+      const timestampStart = 1753981200;
+      const limit = 200; // API max is 200
+      const allData: any[] = [];
+
+      // Get first page to determine total pages needed
+      const firstResponse = await fetch(
+        `${this.apiUrl}/api/price/history/v1?asset=TAO&timestamp_start=${timestampStart}&page=1&limit=${limit}`,
         {
           headers: {
             'Authorization': this.apiKey,
@@ -95,26 +101,72 @@ export class TaostatsClient {
         }
       );
 
-      if (!response.ok) {
-        throw new Error(`Taostats API error: ${response.status} ${response.statusText}`);
+      if (!firstResponse.ok) {
+        throw new Error(`Taostats API error: ${firstResponse.status} ${firstResponse.statusText}`);
       }
 
-      const result = await response.json() as any;
+      const firstResult = await firstResponse.json() as any;
+      allData.push(...firstResult.data);
 
-      // Map the API response to our interface
-      if (result.data && Array.isArray(result.data)) {
-        const historicalData = result.data.map((item: any) => ({
-          date: item.last_updated || item.created_at,
+      const totalPages = firstResult.pagination?.total_pages || 1;
+      console.log(`Fetching ${totalPages} pages of data from August 2025...`);
+
+      // Fetch remaining pages with rate limit consideration
+      // Rate limit: 5 calls/minute = 1 call every 12 seconds to be safe
+      for (let page = 2; page <= totalPages; page++) {
+        // Wait 12 seconds between requests to respect rate limit
+        await new Promise(resolve => setTimeout(resolve, 12000));
+
+        const response = await fetch(
+          `${this.apiUrl}/api/price/history/v1?asset=TAO&timestamp_start=${timestampStart}&page=${page}&limit=${limit}`,
+          {
+            headers: {
+              'Authorization': this.apiKey,
+              'accept': 'application/json',
+            },
+          }
+        );
+
+        if (!response.ok) {
+          console.warn(`Failed to fetch page ${page}, stopping pagination`);
+          break;
+        }
+
+        const pageResult = await response.json() as any;
+        if (!pageResult.data || pageResult.data.length === 0) break;
+
+        allData.push(...pageResult.data);
+        console.log(`Fetched page ${page}/${totalPages}`);
+      }
+
+      // Group by day - keep only the latest record for each day
+      const dailyPrices = new Map<string, HistoricalPriceData>();
+
+      allData.forEach((item: any) => {
+        const timestamp = new Date(item.last_updated || item.created_at);
+        const dateStr = timestamp.toISOString().split('T')[0];
+
+        const currentData = {
+          date: dateStr,
           price: parseFloat(item.price),
           volume: item.volume_24h ? parseFloat(item.volume_24h) : undefined,
-        }));
+        };
 
-        // Cache the result
-        this.cache.set(cacheKey, historicalData, this.cacheTTL);
-        return historicalData;
-      }
+        // Keep the record with the latest timestamp for each day
+        const existing = dailyPrices.get(dateStr);
+        if (!existing || timestamp > new Date(existing.date + 'T23:59:59Z')) {
+          dailyPrices.set(dateStr, currentData);
+        }
+      });
 
-      return [];
+      // Convert to array and sort by date (oldest first)
+      const historicalData = Array.from(dailyPrices.values())
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      // Cache the result
+      this.cache.set(cacheKey, historicalData, this.cacheTTL);
+      console.log(`Fetched ${historicalData.length} daily records from ${historicalData[0]?.date} to ${historicalData[historicalData.length - 1]?.date}`);
+      return historicalData;
     } catch (error) {
       console.error('Error fetching historical prices:', error);
       throw new Error('Failed to fetch historical TAO prices');
