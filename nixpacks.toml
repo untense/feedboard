@@ -1,9 +1,8 @@
 [phases.setup]
 nixPkgs = ['nodejs_20']
-cmds = ['corepack enable']
 
 [phases.install]
-cmds = ['yarn install']
+cmds = ['corepack enable && yarn install']
 
 [phases.build]
 cmds = ['yarn build']
