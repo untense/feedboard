@@ -1,7 +1,9 @@
 import express, { Request, Response } from 'express';
 import { config } from './config.js';
 import { TaostatsClient } from './services/taostats.js';
+import { TransferHistoryClient } from './services/transferHistory.js';
 import { createPriceRouter } from './routes/price.js';
+import { createTransferRouter } from './routes/transfers.js';
 
 const app = express();
 
@@ -15,6 +17,10 @@ const taostatsClient = new TaostatsClient(config.taostats, config.taostats.cache
 await taostatsClient.init();
 console.log('✓ Taostats client initialized with persistent cache');
 
+// Initialize Transfer History client
+const transferClient = new TransferHistoryClient(config.taostats, 60000); // 60s cache TTL
+console.log('✓ Transfer history client initialized');
+
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -22,16 +28,21 @@ app.get('/health', (_req: Request, res: Response) => {
 
 // API routes
 app.use('/api/price', createPriceRouter(taostatsClient));
+app.use('/api/transfers', createTransferRouter(transferClient));
 
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
     name: 'Feedboard',
-    description: 'Lightweight time-series application for accessing the Taostats.io API',
+    description: 'Lightweight application for Bittensor liquidity position observation and management',
     endpoints: {
       health: '/health',
       currentPrice: '/api/price/current',
       historicalPrices: '/api/price/historical',
+      transfersSS58In: '/api/transfers/ss58/:address/in',
+      transfersSS58Out: '/api/transfers/ss58/:address/out',
+      transfersEVMIn: '/api/transfers/evm/:address/in',
+      transfersEVMOut: '/api/transfers/evm/:address/out',
     },
   });
 });

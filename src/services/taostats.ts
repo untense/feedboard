@@ -10,6 +10,7 @@ export class TaostatsClient {
   private cacheTTL: number; // Cache TTL in milliseconds
   private lastRequestTime: number = 0;
   private minRequestInterval: number = 22000; // 22 seconds between requests (12s minimum + 10s cushion for 5 calls/minute rate limit)
+  private priceUpdateInterval: number = 300000; // 5 minutes between price updates (was 22s - too aggressive)
   private isFetchingInBackground: boolean = false;
   private isFetchingCurrentPrice: boolean = false;
 
@@ -136,8 +137,8 @@ export class TaostatsClient {
     try {
       while (true) {
         await this.fetchAndCacheCurrentPrice();
-        // Wait 22 seconds before next update (respects rate limit)
-        await new Promise(resolve => setTimeout(resolve, this.minRequestInterval));
+        // Wait 5 minutes before next update (respects rate limit and reduces API usage)
+        await new Promise(resolve => setTimeout(resolve, this.priceUpdateInterval));
       }
     } catch (error) {
       console.error('Current price update error:', error);
