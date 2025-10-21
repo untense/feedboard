@@ -26,8 +26,8 @@ export function createTransferRouter(transferClient: TransferHistoryClient): Rou
 
       const csv = transfersToCSV(transfers);
 
-      res.type('text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="transfers-in-${address}.csv"`);
+      // Return as plain text so it displays in browser
+      res.type('text/plain');
       res.send(csv);
     } catch (error) {
       console.error('Error in /ss58/:address/in endpoint:', error);
@@ -46,8 +46,8 @@ export function createTransferRouter(transferClient: TransferHistoryClient): Rou
 
       const csv = transfersToCSV(transfers);
 
-      res.type('text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="transfers-out-${address}.csv"`);
+      // Return as plain text so it displays in browser
+      res.type('text/plain');
       res.send(csv);
     } catch (error) {
       console.error('Error in /ss58/:address/out endpoint:', error);
@@ -66,8 +66,8 @@ export function createTransferRouter(transferClient: TransferHistoryClient): Rou
 
       const csv = transfersToCSV(transfers);
 
-      res.type('text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="transfers-in-${address}.csv"`);
+      // Return as plain text so it displays in browser
+      res.type('text/plain');
       res.send(csv);
     } catch (error) {
       console.error('Error in /evm/:address/in endpoint:', error);
@@ -86,8 +86,8 @@ export function createTransferRouter(transferClient: TransferHistoryClient): Rou
 
       const csv = transfersToCSV(transfers);
 
-      res.type('text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="transfers-out-${address}.csv"`);
+      // Return as plain text so it displays in browser
+      res.type('text/plain');
       res.send(csv);
     } catch (error) {
       console.error('Error in /evm/:address/out endpoint:', error);
