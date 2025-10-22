@@ -2,8 +2,10 @@ import express, { Request, Response } from 'express';
 import { config } from './config.js';
 import { TaostatsClient } from './services/taostats.js';
 import { TransferHistoryClient } from './services/transferHistory.js';
+import { BalanceClient } from './services/balance.js';
 import { createPriceRouter } from './routes/price.js';
 import { createTransferRouter } from './routes/transfers.js';
+import { createBalanceRouter } from './routes/balance.js';
 
 const app = express();
 
@@ -21,6 +23,10 @@ console.log('✓ Taostats client initialized with persistent cache');
 const transferClient = new TransferHistoryClient(config.taostats, 60000); // 60s cache TTL
 console.log('✓ Transfer history client initialized');
 
+// Initialize Balance client
+const balanceClient = new BalanceClient(config.taostats, 60000); // 60s cache TTL
+console.log('✓ Balance client initialized');
+
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -29,6 +35,7 @@ app.get('/health', (_req: Request, res: Response) => {
 // API routes
 app.use('/api/price', createPriceRouter(taostatsClient));
 app.use('/api/transfers', createTransferRouter(transferClient));
+app.use('/api/balance', createBalanceRouter(balanceClient));
 
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
@@ -43,6 +50,8 @@ app.get('/', (_req: Request, res: Response) => {
       transfersSS58Out: '/api/transfers/ss58/:address/out',
       transfersEVMIn: '/api/transfers/evm/:address/in',
       transfersEVMOut: '/api/transfers/evm/:address/out',
+      balanceSS58: '/api/balance/ss58/:address',
+      balanceEVM: '/api/balance/evm/:address',
     },
   });
 });

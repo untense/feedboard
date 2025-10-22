@@ -19,6 +19,8 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@polkadot/util": "^13.5.7",
+    "@polkadot/util-crypto": "^13.5.7",
     "@taostats/sdk": "^1.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.1.0"
