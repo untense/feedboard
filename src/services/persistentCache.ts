@@ -25,12 +25,14 @@ export class PersistentCache {
   private csvPath: string;
   private metadataPath: string;
   private currentPricePath: string;
+  private balancesPath: string;
 
   constructor(cacheDir: string = './data/cache') {
     this.cacheDir = cacheDir;
     this.csvPath = path.join(cacheDir, 'historical_prices.csv');
     this.metadataPath = path.join(cacheDir, 'metadata.json');
     this.currentPricePath = path.join(cacheDir, 'current_price.json');
+    this.balancesPath = path.join(cacheDir, 'balances.json');
   }
 
   /**
@@ -238,5 +240,63 @@ export class PersistentCache {
       JSON.stringify({ price, timestamp, lastUpdated: new Date().toISOString() }, null, 2),
       'utf-8'
     );
+  }
+
+  /**
+   * Read all balances from cache
+   */
+  async readBalances(): Promise<Record<string, { balance: string; timestamp: string }> | null> {
+    try {
+      const data = await fs.readFile(this.balancesPath, 'utf-8');
+      return JSON.parse(data);
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        return null; // File doesn't exist yet
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Read balance for a specific address from cache
+   */
+  async readBalance(address: string): Promise<{ balance: string; timestamp: string } | null> {
+    const balances = await this.readBalances();
+    if (!balances) return null;
+    return balances[address] || null;
+  }
+
+  /**
+   * Write balance for a specific address to cache
+   */
+  async writeBalance(address: string, balance: string): Promise<void> {
+    const balances = await this.readBalances() || {};
+    balances[address] = {
+      balance,
+      timestamp: new Date().toISOString(),
+    };
+    await fs.writeFile(this.balancesPath, JSON.stringify(balances, null, 2), 'utf-8');
+  }
+
+  /**
+   * Write multiple balances to cache at once
+   */
+  async writeBalances(balances: Record<string, string>): Promise<void> {
+    const existingBalances = await this.readBalances() || {};
+    const timestamp = new Date().toISOString();
+
+    for (const [address, balance] of Object.entries(balances)) {
+      existingBalances[address] = { balance, timestamp };
+    }
+
+    await fs.writeFile(this.balancesPath, JSON.stringify(existingBalances, null, 2), 'utf-8');
+  }
+
+  /**
+   * Get all addresses that have cached balances
+   */
+  async getCachedAddresses(): Promise<string[]> {
+    const balances = await this.readBalances();
+    return balances ? Object.keys(balances) : [];
   }
 }

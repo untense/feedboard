@@ -18,7 +18,9 @@ export function createBalanceRouter(balanceClient: BalanceClient): Router {
       res.send(balance);
     } catch (error) {
       console.error('Error in /ss58/:address endpoint:', error);
-      res.status(500).type('text/plain').send('Error fetching balance');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorDetails = (error as any).response || (error as any).statusCode || '';
+      res.status(500).type('text/plain').send(`Error fetching balance: ${errorMessage}\nDetails: ${JSON.stringify(errorDetails)}`);
     }
   });
 
@@ -37,7 +39,9 @@ export function createBalanceRouter(balanceClient: BalanceClient): Router {
       res.send(balance);
     } catch (error) {
       console.error('Error in /evm/:address endpoint:', error);
-      res.status(500).type('text/plain').send('Error fetching balance');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorDetails = (error as any).response || (error as any).statusCode || '';
+      res.status(500).type('text/plain').send(`Error fetching balance: ${errorMessage}\nDetails: ${JSON.stringify(errorDetails)}`);
     }
   });
 

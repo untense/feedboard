@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { TaostatsClient } from './services/taostats.js';
 import { TransferHistoryClient } from './services/transferHistory.js';
 import { BalanceClient } from './services/balance.js';
+import { PersistentCache } from './services/persistentCache.js';
 import { createPriceRouter } from './routes/price.js';
 import { createTransferRouter } from './routes/transfers.js';
 import { createBalanceRouter } from './routes/balance.js';
@@ -11,6 +12,11 @@ const app = express();
 
 // Middleware
 app.use(express.json());
+
+// Initialize shared persistent cache
+const persistentCache = new PersistentCache();
+await persistentCache.init();
+console.log('✓ Persistent cache initialized');
 
 // Initialize Taostats client with caching
 const taostatsClient = new TaostatsClient(config.taostats, config.taostats.cacheTTL);
@@ -23,9 +29,10 @@ console.log('✓ Taostats client initialized with persistent cache');
 const transferClient = new TransferHistoryClient(config.taostats, 60000); // 60s cache TTL
 console.log('✓ Transfer history client initialized');
 
-// Initialize Balance client
-const balanceClient = new BalanceClient(config.taostats, 60000); // 60s cache TTL
-console.log('✓ Balance client initialized');
+// Initialize Balance client with persistent cache and hourly updates
+const balanceClient = new BalanceClient(config.taostats, persistentCache, 3600000); // 1 hour update interval
+await balanceClient.init();
+console.log('✓ Balance client initialized with persistent cache and hourly updates');
 
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {

@@ -1,21 +1,45 @@
 import { TaoStatsClient } from '@taostats/sdk';
 import type { TaostatsConfig } from '../types/index.js';
-import { Cache } from './cache.js';
+import { PersistentCache } from './persistentCache.js';
 import { blake2AsU8a, encodeAddress } from '@polkadot/util-crypto';
 import { hexToU8a } from '@polkadot/util';
 
 export class BalanceClient {
   private client: TaoStatsClient;
-  private cache: Cache<string>;
-  private cacheTTL: number;
+  private persistentCache: PersistentCache;
+  private updateInterval: number;
+  private updateTimer: NodeJS.Timeout | null = null;
+  private trackedAddresses: Set<string> = new Set();
 
-  constructor(config: TaostatsConfig, cacheTTL: number = 60000) {
+  constructor(
+    config: TaostatsConfig,
+    persistentCache: PersistentCache,
+    updateInterval: number = 3600000 // Default 1 hour
+  ) {
     this.client = new TaoStatsClient({
       apiKey: config.apiKey,
       baseUrl: config.apiUrl,
     });
-    this.cache = new Cache();
-    this.cacheTTL = cacheTTL; // Default 60 seconds
+    this.persistentCache = persistentCache;
+    this.updateInterval = updateInterval;
+  }
+
+  /**
+   * Initialize the balance client and start background updates
+   */
+  async init(): Promise<void> {
+    // Start background update loop
+    this.startBackgroundUpdates();
+  }
+
+  /**
+   * Stop background updates (cleanup)
+   */
+  async stop(): Promise<void> {
+    if (this.updateTimer) {
+      clearTimeout(this.updateTimer);
+      this.updateTimer = null;
+    }
   }
 
   /**
@@ -49,21 +73,40 @@ export class BalanceClient {
 
   /**
    * Get balance for a given address (SS58 or EVM)
+   * Returns cached value immediately if available, triggers background update
    * @param address - The SS58 or EVM address
    * @returns Balance in TAO as a string
    */
   async getBalance(address: string): Promise<string> {
-    const cacheKey = `balance-${address}`;
+    // Track this address for background updates
+    this.trackedAddresses.add(address);
 
-    // Check cache first
-    const cached = this.cache.get(cacheKey);
+    // Check persistent cache first
+    const cached = await this.persistentCache.readBalance(address);
     if (cached) {
-      console.log(`Cache hit for ${cacheKey}`);
-      return cached;
+      console.log(`Balance cache hit for ${address}: ${cached.balance} TAO (cached at ${cached.timestamp})`);
+
+      // Trigger background update if cache is old (but don't wait for it)
+      const cacheAge = Date.now() - new Date(cached.timestamp).getTime();
+      if (cacheAge > this.updateInterval) {
+        console.log(`Cache is stale (${Math.round(cacheAge / 1000)}s old), triggering background update`);
+        this.fetchAndCacheBalance(address).catch(err =>
+          console.error(`Background balance update failed for ${address}:`, err)
+        );
+      }
+
+      return cached.balance;
     }
 
-    console.log(`Cache miss for ${cacheKey}, fetching from API...`);
+    // No cached value, fetch immediately
+    console.log(`Balance cache miss for ${address}, fetching from API...`);
+    return await this.fetchAndCacheBalance(address);
+  }
 
+  /**
+   * Fetch balance from API and cache it
+   */
+  private async fetchAndCacheBalance(address: string): Promise<string> {
     try {
       let queryAddress = address;
 
@@ -88,7 +131,7 @@ export class BalanceClient {
       if (!accountData) {
         // Account doesn't exist, return 0 balance
         console.log(`Account ${address} not found, returning 0 balance`);
-        this.cache.set(cacheKey, '0', this.cacheTTL);
+        await this.persistentCache.writeBalance(address, '0');
         return '0';
       }
 
@@ -98,12 +141,55 @@ export class BalanceClient {
       console.log(`Balance for ${address}: ${balanceTao} TAO (${balanceRao} rao)`);
 
       // Cache the result
-      this.cache.set(cacheKey, balanceTao, this.cacheTTL);
+      await this.persistentCache.writeBalance(address, balanceTao);
 
       return balanceTao;
     } catch (error) {
       console.error('Error fetching balance:', error);
-      throw new Error('Failed to fetch balance');
+      throw error;
     }
+  }
+
+  /**
+   * Background update loop - refreshes all tracked addresses periodically
+   */
+  private async balanceUpdateLoop(): Promise<void> {
+    if (this.trackedAddresses.size === 0) {
+      console.log('No addresses to update');
+      return;
+    }
+
+    console.log(`Updating balances for ${this.trackedAddresses.size} tracked addresses...`);
+
+    for (const address of this.trackedAddresses) {
+      try {
+        await this.fetchAndCacheBalance(address);
+        // Wait 12 seconds between requests to respect rate limit (5 calls/min)
+        await new Promise(resolve => setTimeout(resolve, 12000));
+      } catch (error) {
+        console.error(`Failed to update balance for ${address}:`, error);
+      }
+    }
+
+    console.log('Balance update loop complete');
+  }
+
+  /**
+   * Start background updates
+   */
+  private startBackgroundUpdates(): void {
+    const runUpdate = async () => {
+      try {
+        await this.balanceUpdateLoop();
+      } catch (error) {
+        console.error('Balance update error:', error);
+      }
+
+      // Schedule next update
+      this.updateTimer = setTimeout(runUpdate, this.updateInterval);
+    };
+
+    // Start the loop
+    runUpdate();
   }
 }
