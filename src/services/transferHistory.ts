@@ -136,10 +136,33 @@ export class TransferHistoryClient {
         const from = typeof t.from === 'object' ? (t.from?.ss58 || t.from?.hex || '') : (t.from || '');
         const to = typeof t.to === 'object' ? (t.to?.ss58 || t.to?.hex || '') : (t.to || '');
 
+        // Convert amount from raw units to TAO
+        const rawAmount = t.amount || '0';
+        let amountInTao: string;
+
+        if (this.isEvmAddress(address)) {
+          // EVM uses 18 decimals (wei) - need to divide by 10^18
+          const divisor = BigInt(10 ** 18);
+          const bigAmount = BigInt(rawAmount);
+          const wholePart = bigAmount / divisor;
+          const fractionalPart = bigAmount % divisor;
+
+          // Convert to string with 18 decimal places
+          const fractionalStr = fractionalPart.toString().padStart(18, '0');
+          // Trim to 9 significant decimals (TAO precision)
+          const trimmedFractional = fractionalStr.substring(0, 9);
+          amountInTao = wholePart.toString() + '.' + trimmedFractional;
+          // Clean up trailing zeros
+          amountInTao = parseFloat(amountInTao).toString();
+        } else {
+          // SS58 uses 9 decimals (rao)
+          amountInTao = (Number(rawAmount) / 1e9).toString();
+        }
+
         return {
           from: String(from),
           to: String(to),
-          amount: t.amount || '0',
+          amount: amountInTao,
           extrinsicId: t.extrinsic_id || t.extrinsicId || t.transaction_hash || t.hash || '',
           blockNumber: t.block_number || t.blockNumber || t.block || 0,
           timestamp: t.timestamp || t.created_at || t.time || '',

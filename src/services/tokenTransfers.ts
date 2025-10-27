@@ -1,6 +1,7 @@
 import { TaoStatsClient } from '@taostats/sdk';
 import type { TaostatsConfig } from '../types/index.js';
 import { Cache } from './cache.js';
+import { TOKENS, type TokenInfo } from '../config/tokens.js';
 
 export interface TokenTransferRecord {
   from: string;
@@ -48,10 +49,32 @@ export class TokenTransferClient {
   }
 
   /**
-   * Parse transfer amount from log data (hex string to decimal)
+   * Get token info by contract address (case-insensitive)
    */
-  private parseAmount(hexAmount: string): string {
-    return BigInt(hexAmount).toString();
+  private getTokenByContract(contractAddress: string): TokenInfo | null {
+    const normalizedAddress = contractAddress.toLowerCase();
+    for (const token of Object.values(TOKENS)) {
+      if (token.contractAddress?.toLowerCase() === normalizedAddress) {
+        return token;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Parse transfer amount from log data (hex string to decimal) and convert to human-readable format
+   */
+  private parseAmount(hexAmount: string, decimals: number): string {
+    const rawAmount = BigInt(hexAmount);
+    const divisor = BigInt(10 ** decimals);
+    const wholePart = rawAmount / divisor;
+    const fractionalPart = rawAmount % divisor;
+
+    // Convert to string with proper decimal places
+    const result = wholePart.toString() + '.' + fractionalPart.toString().padStart(decimals, '0');
+
+    // Clean up trailing zeros
+    return parseFloat(result).toString();
   }
 
   /**
@@ -116,6 +139,13 @@ export class TokenTransferClient {
       const logs = response.data.data || [];
       console.log(`Received ${logs.length} EVM token transfer logs from API`);
 
+      // Look up token info to get decimals and symbol
+      const tokenInfo = this.getTokenByContract(tokenContract);
+      const decimals = tokenInfo?.decimals ?? 18; // Default to 18 decimals if unknown
+      const tokenSymbol = tokenInfo?.symbol ?? 'UNKNOWN';
+
+      console.log(`Token info for ${tokenContract}: ${tokenSymbol} (${decimals} decimals)`);
+
       // Parse logs into transfer records
       let transfers: TokenTransferRecord[] = logs
         .map((log: any) => {
@@ -124,14 +154,14 @@ export class TokenTransferClient {
             const from = this.extractAddress(log.topic1 || '');
             const to = this.extractAddress(log.topic2 || '');
 
-            // Parse amount from data field
-            const amount = this.parseAmount(log.data || '0x0');
+            // Parse amount from data field and convert to human-readable format
+            const amount = this.parseAmount(log.data || '0x0', decimals);
 
             return {
               from,
               to,
               amount,
-              token: 'UNKNOWN', // Token symbol would need additional lookup
+              token: tokenSymbol,
               tokenContract: log.address || tokenContract,
               transactionHash: log.transaction_hash || '',
               blockNumber: log.block_number || 0,
