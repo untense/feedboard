@@ -3,10 +3,12 @@ import { config } from './config.js';
 import { TaostatsClient } from './services/taostats.js';
 import { TransferHistoryClient } from './services/transferHistory.js';
 import { BalanceClient } from './services/balance.js';
+import { TokenTransferClient } from './services/tokenTransfers.js';
 import { PersistentCache } from './services/persistentCache.js';
 import { createPriceRouter } from './routes/price.js';
 import { createTransferRouter } from './routes/transfers.js';
 import { createBalanceRouter } from './routes/balance.js';
+import { createTokenTransferRouter } from './routes/tokenTransfers.js';
 
 const app = express();
 
@@ -34,6 +36,10 @@ const balanceClient = new BalanceClient(config.taostats, persistentCache, 360000
 await balanceClient.init();
 console.log('✓ Balance client initialized with persistent cache and hourly updates');
 
+// Initialize Token Transfer client
+const tokenTransferClient = new TokenTransferClient(config.taostats, 60000); // 60s cache TTL
+console.log('✓ Token transfer client initialized');
+
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -43,6 +49,7 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/api/price', createPriceRouter(taostatsClient));
 app.use('/api/transfers', createTransferRouter(transferClient));
 app.use('/api/balance', createBalanceRouter(balanceClient));
+app.use('/api/token-transfers', createTokenTransferRouter(tokenTransferClient));
 
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
@@ -59,6 +66,10 @@ app.get('/', (_req: Request, res: Response) => {
       transfersEVMOut: '/api/transfers/evm/:address/out',
       balanceSS58: '/api/balance/ss58/:address',
       balanceEVM: '/api/balance/evm/:address',
+      tokenTransfersEVMIn: '/api/token-transfers/evm/:tokenContract/:address/in',
+      tokenTransfersEVMOut: '/api/token-transfers/evm/:tokenContract/:address/out',
+      tokenTransfersSS58In: '/api/token-transfers/ss58/:tokenId/:address/in (not yet implemented)',
+      tokenTransfersSS58Out: '/api/token-transfers/ss58/:tokenId/:address/out (not yet implemented)',
     },
   });
 });

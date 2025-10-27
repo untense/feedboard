@@ -13,8 +13,17 @@ HTTP endpoints for:
 - History of token transers in, for a given Bittensor EVM H160 account
 - History of token transers out, for a given Bittensor EVM H160 account
 
+Balances in TAO
+- Current balance of an SS58 account
+- Current balance of an EVM H160 account
+
+## Data freshness
+
+Data is not realtime. It is cached to file, and updated periodically.
+ 
 ## Architecture
 
 - Yarn package manager
 - Typescript
 - Railway for deployment
+
