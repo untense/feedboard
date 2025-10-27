@@ -4,6 +4,7 @@ import { TaostatsClient } from './services/taostats.js';
 import { TransferHistoryClient } from './services/transferHistory.js';
 import { BalanceClient } from './services/balance.js';
 import { TokenTransferClient } from './services/tokenTransfers.js';
+import { TokenBalanceClient } from './services/tokenBalance.js';
 import { PersistentCache } from './services/persistentCache.js';
 import { createPriceRouter } from './routes/price.js';
 import { createTransferRouter } from './routes/transfers.js';
@@ -36,6 +37,11 @@ const balanceClient = new BalanceClient(config.taostats, persistentCache, 360000
 await balanceClient.init();
 console.log('✓ Balance client initialized with persistent cache and hourly updates');
 
+// Initialize Token Balance client with persistent cache and hourly updates
+const tokenBalanceClient = new TokenBalanceClient(config.taostats, persistentCache, 3600000); // 1 hour update interval
+await tokenBalanceClient.init();
+console.log('✓ Token balance client initialized with persistent cache and hourly updates');
+
 // Initialize Token Transfer client
 const tokenTransferClient = new TokenTransferClient(config.taostats, 60000); // 60s cache TTL
 console.log('✓ Token transfer client initialized');
@@ -48,7 +54,7 @@ app.get('/health', (_req: Request, res: Response) => {
 // API routes
 app.use('/api/price', createPriceRouter(taostatsClient));
 app.use('/api/transfers', createTransferRouter(transferClient));
-app.use('/api/balance', createBalanceRouter(balanceClient));
+app.use('/api/balance', createBalanceRouter(balanceClient, tokenBalanceClient));
 app.use('/api/token-transfers', createTokenTransferRouter(tokenTransferClient));
 
 // Root endpoint
@@ -65,7 +71,7 @@ app.get('/', (_req: Request, res: Response) => {
       transfersEVMIn: '/api/transfers/evm/:address/in',
       transfersEVMOut: '/api/transfers/evm/:address/out',
       balanceSS58: '/api/balance/ss58/:address',
-      balanceEVM: '/api/balance/evm/:address',
+      balanceEVM: '/api/balance/evm/:currency/:address (currency: tao, usdc, etc.)',
       tokenTransfersEVMIn: '/api/token-transfers/evm/:tokenContract/:address/in',
       tokenTransfersEVMOut: '/api/token-transfers/evm/:tokenContract/:address/out',
       tokenTransfersSS58In: '/api/token-transfers/ss58/:tokenId/:address/in (not yet implemented)',

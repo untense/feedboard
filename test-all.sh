@@ -117,22 +117,27 @@ test_endpoint \
     "$BASE_URL/api/balance/ss58/$SS58_ADDRESS" \
     "SS58 Account Balance"
 
-# Test 10: EVM Balance
+# Test 10: EVM TAO Balance (using currency shortname)
 test_endpoint \
-    "$BASE_URL/api/balance/evm/$EVM_ADDRESS" \
-    "EVM Account Balance"
+    "$BASE_URL/api/balance/evm/tao/$EVM_ADDRESS" \
+    "EVM Account Balance (TAO)"
 
-# Test 11: EVM Token Incoming Transfers (USDC)
+# Test 11: EVM USDC Balance (using currency shortname)
+test_endpoint \
+    "$BASE_URL/api/balance/evm/usdc/$EVM_ADDRESS" \
+    "EVM Account Balance (USDC)"
+
+# Test 12: EVM Token Incoming Transfers (USDC)
 test_endpoint \
     "$BASE_URL/api/token-transfers/evm/$USDC_CONTRACT/$EVM_ADDRESS/in" \
     "EVM Token Incoming Transfers (USDC)"
 
-# Test 12: EVM Token Outgoing Transfers (USDC)
+# Test 13: EVM Token Outgoing Transfers (USDC)
 test_endpoint \
     "$BASE_URL/api/token-transfers/evm/$USDC_CONTRACT/$EVM_ADDRESS/out" \
     "EVM Token Outgoing Transfers (USDC)"
 
-# Test 13: SS58 Token Transfers (Not Implemented - should return 501)
+# Test 14: SS58 Token Transfers (Not Implemented - should return 501)
 test_endpoint \
     "$BASE_URL/api/token-transfers/ss58/1/$SS58_ADDRESS/in" \
     "SS58 Token Transfers (Expected: Not Implemented)" \

@@ -89,35 +89,47 @@ date,price,volume
 
 ### Wallet Balance
 
-Get the TAO balance for a wallet address (supports both SS58 native addresses and EVM H160 addresses).
+Get wallet balances for both SS58 native addresses and EVM H160 addresses. Supports native TAO and ERC-20 tokens (USDC, etc.).
 
-**SS58 Address:**
+**SS58 Address (Native TAO only):**
 ```
 GET /api/balance/ss58/:address
 ```
 
-**EVM Address:**
+**EVM Address (TAO and tokens):**
 ```
-GET /api/balance/evm/:address
+GET /api/balance/evm/:currency/:address
 ```
 
-**Response:** Plain text balance in TAO
+**Parameters:**
+- `currency`: Token symbol (`tao`, `usdc`, etc.)
+- `address`: Wallet address (SS58 or EVM H160)
+
+**Response:** Plain text balance in token's base unit
 ```
 123.456789
 ```
 
-**Example:**
+**Examples:**
 ```bash
-# SS58 address
+# SS58 address - native TAO balance
 curl http://localhost:3000/api/balance/ss58/5EvkUbiUVxb8HPeMvVW5XigyQiwNsNLMLpuAuaUAFvGQEdCQ
 
-# EVM address (automatically converted to SS58 mirror)
-curl http://localhost:3000/api/balance/evm/0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8
+# EVM address - native TAO balance (via mirror address)
+curl http://localhost:3000/api/balance/evm/tao/0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8
+
+# EVM address - USDC token balance (via ERC-20 contract)
+curl http://localhost:3000/api/balance/evm/usdc/0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8
 ```
+
+**Supported Currencies:**
+- `tao` - Native Bittensor token
+- `usdc` - USD Coin (ERC-20)
 
 **Features:**
 - Persistent cache with hourly background updates
-- Automatic EVM-to-SS58 mirror address conversion
+- TAO: Automatic EVM-to-SS58 mirror address conversion via Taostats API
+- Tokens: Direct ERC-20 contract queries via Bittensor EVM RPC
 - Returns `0` for non-existent accounts
 
 ### Transfer History
@@ -189,7 +201,7 @@ Run the comprehensive test suite:
 ./test-all.sh
 ```
 
-This tests all 13 endpoints including health check, price data, balances, transfers, and token transfers.
+This tests all 14 endpoints including health check, price data, balances (TAO and tokens), transfers, and token transfers.
 
 ## Caching and Rate Limiting
 
@@ -210,7 +222,8 @@ data/
     ├── current_price.json       # Latest TAO price
     ├── historical_prices.csv    # Daily historical prices
     ├── metadata.json            # Pagination and fetch state
-    └── balances.json            # Wallet balances
+    ├── balances.json            # Native TAO balances
+    └── token_balances.json      # ERC-20 token balances (USDC, etc.)
 ```
 
 **Benefits:**
@@ -237,7 +250,9 @@ The application runs several background processes to keep data fresh:
 #### Balance Updates
 - Frequency: Every 1 hour for tracked addresses
 - Automatically tracks any address queried via the API
-- Updates all tracked balances in background
+- Updates both native TAO and token balances (USDC, etc.) in background
+- Native TAO: Updates via Taostats API
+- Token balances: Updates via Bittensor EVM RPC (direct ERC-20 contract queries)
 - Stale cache triggers immediate refresh on first request
 
 ### Rate Limiting Implementation
@@ -294,7 +309,9 @@ Railway will automatically detect the configuration and deploy your application.
 - **Runtime**: Node.js + tsx (development)
 - **Web Framework**: Express.js
 - **External APIs**: Taostats.io API, @taostats/sdk
-- **Blockchain Utils**: @polkadot/util-crypto (EVM-to-SS58 conversion)
+- **Blockchain Utils**:
+  - @polkadot/util-crypto (EVM-to-SS58 conversion)
+  - ethers.js (ERC-20 token queries via Bittensor EVM RPC)
 - **Deployment**: Railway (Nixpacks)
 
 ## License

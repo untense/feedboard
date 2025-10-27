@@ -26,6 +26,7 @@ export class PersistentCache {
   private metadataPath: string;
   private currentPricePath: string;
   private balancesPath: string;
+  private tokenBalancesPath: string;
 
   constructor(cacheDir: string = './data/cache') {
     this.cacheDir = cacheDir;
@@ -33,6 +34,7 @@ export class PersistentCache {
     this.metadataPath = path.join(cacheDir, 'metadata.json');
     this.currentPricePath = path.join(cacheDir, 'current_price.json');
     this.balancesPath = path.join(cacheDir, 'balances.json');
+    this.tokenBalancesPath = path.join(cacheDir, 'token_balances.json');
   }
 
   /**
@@ -298,5 +300,41 @@ export class PersistentCache {
   async getCachedAddresses(): Promise<string[]> {
     const balances = await this.readBalances();
     return balances ? Object.keys(balances) : [];
+  }
+
+  /**
+   * Read all token balances from cache
+   */
+  async readTokenBalances(): Promise<Record<string, { balance: string; timestamp: string }> | null> {
+    try {
+      const data = await fs.readFile(this.tokenBalancesPath, 'utf-8');
+      return JSON.parse(data);
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        return null; // File doesn't exist yet
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Read token balance for a specific cache key (symbol:address) from cache
+   */
+  async readTokenBalance(cacheKey: string): Promise<{ balance: string; timestamp: string } | null> {
+    const balances = await this.readTokenBalances();
+    if (!balances) return null;
+    return balances[cacheKey] || null;
+  }
+
+  /**
+   * Write token balance for a specific cache key to cache
+   */
+  async writeTokenBalance(cacheKey: string, balance: string): Promise<void> {
+    const balances = await this.readTokenBalances() || {};
+    balances[cacheKey] = {
+      balance,
+      timestamp: new Date().toISOString(),
+    };
+    await fs.writeFile(this.tokenBalancesPath, JSON.stringify(balances, null, 2), 'utf-8');
   }
 }

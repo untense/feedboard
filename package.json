@@ -23,6 +23,7 @@
     "@polkadot/util-crypto": "^13.5.7",
     "@taostats/sdk": "^1.2.0",
     "dotenv": "^17.2.3",
+    "ethers": "^6.15.0",
     "express": "^5.1.0"
   },
   "devDependencies": {
