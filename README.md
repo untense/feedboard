@@ -191,6 +191,79 @@ Run the comprehensive test suite:
 
 This tests all 13 endpoints including health check, price data, balances, transfers, and token transfers.
 
+## Caching and Rate Limiting
+
+### API Rate Limits
+
+The Taostats.io API has a rate limit of **60 calls per minute**. Feedboard implements intelligent caching and rate limiting to ensure:
+- Fast response times for users
+- Efficient use of API quota
+- No rate limit errors
+
+### Persistent File-Based Cache
+
+All data is cached to disk in the `data/cache/` directory:
+
+```
+data/
+└── cache/
+    ├── current_price.json       # Latest TAO price
+    ├── historical_prices.csv    # Daily historical prices
+    ├── metadata.json            # Pagination and fetch state
+    └── balances.json            # Wallet balances
+```
+
+**Benefits:**
+- **Instant responses**: Cached data served immediately (typically <10ms)
+- **Persistence**: Cache survives server restarts
+- **Background updates**: Data refreshed automatically without blocking requests
+- **Rate limit compliance**: Enforces 1.5-second delay between API calls
+
+### Background Update Processes
+
+The application runs several background processes to keep data fresh:
+
+#### Current Price Updates
+- Frequency: Every 1 minute
+- Automatically updates `current_price.json`
+- Users always get fresh price data instantly
+
+#### Historical Price Backfill
+- Runs continuously on startup to fetch missing data
+- Fetches back to August 1, 2025
+- After backfill completes, checks for new data twice per day (every 12 hours)
+- Uses pagination to efficiently fetch 200 records per request
+
+#### Balance Updates
+- Frequency: Every 1 hour for tracked addresses
+- Automatically tracks any address queried via the API
+- Updates all tracked balances in background
+- Stale cache triggers immediate refresh on first request
+
+### Rate Limiting Implementation
+
+All API requests enforce a 1.5-second delay between calls:
+- **Rate limit**: 60 calls/minute = 1 call/second
+- **Safety margin**: 1.5s delay = 40 calls/minute actual rate
+- **Buffer**: 33% headroom to prevent accidental rate limit violations
+
+This ensures the application never exceeds the API rate limit, even with multiple concurrent users.
+
+### Cache Configuration
+
+Cache behavior can be configured via environment variables:
+
+```bash
+# Cache TTL for in-memory cache (default: 30 seconds)
+CACHE_TTL=30000
+```
+
+The persistent cache has built-in TTLs:
+- Current price: Refreshed every 1 minute
+- Historical prices: Checked twice daily for new data
+- Balances: Refreshed every 1 hour for tracked addresses
+- Transfers: Cached for 60 seconds
+
 ## Building for Production
 
 Build the application:
