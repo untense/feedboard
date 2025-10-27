@@ -28,6 +28,7 @@ build/
 # IDE
 .vscode/
 .idea/
+.claude/*.local.json
 
 # Logs
 *.log
