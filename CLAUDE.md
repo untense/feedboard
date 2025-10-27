@@ -55,16 +55,17 @@ The application exposes these HTTP endpoints:
 ### Taostats API Integration
 - Client implementation in `src/services/taostats.ts`
 - Uses actual Taostats API endpoint: `/api/price/history/v1`
-- **Rate Limit**: Taostats API allows 5 calls per minute
-- **Caching**: In-memory cache (default 30s TTL) to respect rate limits
+- **Rate Limit**: Taostats API allows 60 calls per minute (enforced with 1.5s delay for safety margin)
+- **Caching**: Persistent file-based cache with background updates to minimize API calls
 - Uses fetch API for HTTP requests
 - Includes error handling and response normalization
 
 ### Caching Strategy
 - Implementation: `src/services/cache.ts` - Simple in-memory cache with TTL
 - Default TTL: 30 seconds (configurable via `CACHE_TTL` environment variable)
+- Persistent cache: `src/services/persistentCache.ts` - File-based cache for historical data and current price
 - Cache keys: `current-price` and `historical-prices`
-- **Critical for production**: Without caching, multiple concurrent users will exceed the 5 calls/minute rate limit
+- **Critical for production**: Without caching, multiple concurrent users will exceed the 60 calls/minute rate limit
 - Cache behavior logged to console for debugging
 
 ### Response Formats

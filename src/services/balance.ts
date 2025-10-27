@@ -164,8 +164,8 @@ export class BalanceClient {
     for (const address of this.trackedAddresses) {
       try {
         await this.fetchAndCacheBalance(address);
-        // Wait 12 seconds between requests to respect rate limit (5 calls/min)
-        await new Promise(resolve => setTimeout(resolve, 12000));
+        // Wait 1.5 seconds between requests to respect rate limit (60 calls/min with safety margin)
+        await new Promise(resolve => setTimeout(resolve, 1500));
       } catch (error) {
         console.error(`Failed to update balance for ${address}:`, error);
       }
