@@ -6,7 +6,7 @@ export function createAddressRoutes() {
 
   /**
    * GET /api/address/convert/:address
-   * Convert between SS58 and hex address formats
+   * Convert between SS58 and H160 address formats
    */
   async function convertAddress(req: Request, res: Response, next: NextFunction) {
     try {
@@ -20,8 +20,8 @@ export function createAddressRoutes() {
       const result = converter.convert(address);
 
       // Return just the converted address as plain text
-      // If input was SS58, return hex. If input was hex, return SS58.
-      const converted = result.inputFormat === 'ss58' ? result.hex : result.ss58;
+      // If input was SS58, return H160. If input was H160, return SS58.
+      const converted = result.inputFormat === 'ss58' ? result.h160 : result.ss58;
 
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.send(converted);
