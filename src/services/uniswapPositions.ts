@@ -42,6 +42,7 @@ export class UniswapPositionsClient {
   private positionManager: Contract;
   private cache: Cache<UniswapPosition[]>;
   private tokenInfoCache: Map<string, { symbol: string; decimals: number; name: string }> = new Map();
+  private cacheTTL: number;
 
   // TaoFi Uniswap V3 NonfungiblePositionManager on Bittensor EVM
   private readonly POSITION_MANAGER_ADDRESS = '0x61EeA4770d7E15e7036f8632f4bcB33AF1Af1e25';
@@ -54,7 +55,8 @@ export class UniswapPositionsClient {
       POSITION_MANAGER_ABI,
       this.provider
     );
-    this.cache = new Cache<UniswapPosition[]>(cacheTTL); // 5 minutes default
+    this.cache = new Cache<UniswapPosition[]>();
+    this.cacheTTL = cacheTTL; // 5 minutes default
   }
 
   /**
@@ -225,8 +227,8 @@ export class UniswapPositionsClient {
       }
 
       // Cache the results
-      this.cache.set(cacheKey, positions);
-      console.log(`Cached ${positions.length} positions for ${address}`);
+      this.cache.set(cacheKey, positions, this.cacheTTL);
+      console.log(`Cached ${positions.length} positions for ${address} (TTL: ${this.cacheTTL}ms)`);
 
       return positions;
     } catch (error) {
