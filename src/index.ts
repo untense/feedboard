@@ -11,6 +11,7 @@ import { createTransferRouter } from './routes/transfers.js';
 import { createBalanceRouter } from './routes/balance.js';
 import { createTokenTransferRouter } from './routes/tokenTransfers.js';
 import { createUniswapPositionsRoutes } from './routes/uniswapPositions.js';
+import { createUniswapFeesRouter } from './routes/uniswapFees.js';
 import { createAddressRoutes } from './routes/address.js';
 
 const app = express();
@@ -66,6 +67,9 @@ console.log('✓ Uniswap positions client initialized with background updates');
 
 app.get('/api/uniswap/positions/:address', uniswapPositionsRoutes.getPositions);
 
+// Uniswap fee collections route
+app.use('/api/uniswap/fees', createUniswapFeesRouter(config.taostats));
+
 // Address conversion route
 const addressRoutes = createAddressRoutes();
 app.get('/api/address/convert/:address', addressRoutes.convertAddress);
@@ -90,6 +94,7 @@ app.get('/', (_req: Request, res: Response) => {
       tokenTransfersSS58In: '/api/token-transfers/ss58/:tokenId/:address/in (not yet implemented)',
       tokenTransfersSS58Out: '/api/token-transfers/ss58/:tokenId/:address/out (not yet implemented)',
       uniswapPositions: '/api/uniswap/positions/:address',
+      uniswapFees: '/api/uniswap/fees/:address',
       addressConvert: '/api/address/convert/:address',
     },
   });
