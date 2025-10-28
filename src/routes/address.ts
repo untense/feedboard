@@ -19,11 +19,12 @@ export function createAddressRoutes() {
 
       const result = converter.convert(address);
 
-      // Return as plain text CSV format
-      const csv = `input,inputFormat,ss58,hex\n${result.input},${result.inputFormat},${result.ss58},${result.hex}`;
+      // Return just the converted address as plain text
+      // If input was SS58, return hex. If input was hex, return SS58.
+      const converted = result.inputFormat === 'ss58' ? result.hex : result.ss58;
 
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.send(csv);
+      res.send(converted);
     } catch (error) {
       console.error('Error in convertAddress route:', error);
       if (error instanceof Error) {

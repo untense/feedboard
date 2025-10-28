@@ -234,7 +234,7 @@ curl http://localhost:3000/api/uniswap/positions/0xC7d40db455F5BaEDB4a8348dE69e8
 
 ### Address Conversion
 
-Convert between SS58 and hex address formats. Auto-detects input format and returns both representations.
+Convert between SS58 and hex address formats. Auto-detects input format and returns the converted address.
 
 **Endpoint:**
 ```
@@ -244,19 +244,24 @@ GET /api/address/convert/:address  # Convert between SS58 and hex formats
 **Parameters:**
 - `address`: Either SS58 or hex address format
 
-**Response:** CSV format
-```csv
-input,inputFormat,ss58,hex
-5EvkUbiUVxb8HPeMvVW5XigyQiwNsNLMLpuAuaUAFvGQEdCQ,ss58,5EvkUbiUVxb8HPeMvVW5XigyQiwNsNLMLpuAuaUAFvGQEdCQ,0x7ea38e1c99d2d92fdd1f389c95dde4030b9c58199c2b54009c08a81c6d3fc007
+**Response:** Plain text (just the converted address)
+```
+# Input: SS58 address → Output: hex address
+0x7ea38e1c99d2d92fdd1f389c95dde4030b9c58199c2b54009c08a81c6d3fc007
+
+# Input: hex address → Output: SS58 address
+5EvkUbiUVxb8HPeMvVW5XigyQiwNsNLMLpuAuaUAFvGQEdCQ
 ```
 
 **Examples:**
 ```bash
 # Convert SS58 to hex
 curl http://localhost:3000/api/address/convert/5EvkUbiUVxb8HPeMvVW5XigyQiwNsNLMLpuAuaUAFvGQEdCQ
+# Returns: 0x7ea38e1c99d2d92fdd1f389c95dde4030b9c58199c2b54009c08a81c6d3fc007
 
 # Convert hex to SS58
 curl http://localhost:3000/api/address/convert/0x7ea38e1c99d2d92fdd1f389c95dde4030b9c58199c2b54009c08a81c6d3fc007
+# Returns: 5EvkUbiUVxb8HPeMvVW5XigyQiwNsNLMLpuAuaUAFvGQEdCQ
 ```
 
 ## Testing
