@@ -36,7 +36,7 @@ export function createUniswapFeesRouter(config: TaostatsConfig): Router {
         ),
       ].join('\n');
 
-      res.type('text/csv').send(csv);
+      res.type('text/plain').send(csv);
     } catch (error) {
       console.error('Error fetching fee collections:', error);
       res.status(500).type('text/plain').send('Failed to fetch fee collections');

@@ -19,6 +19,9 @@ export class UniswapFeesClient {
   // Uniswap V3 NonfungiblePositionManager contract address
   private readonly POSITION_MANAGER = '0x61EeA4770d7E15e7036f8632f4bcB33AF1Af1e25';
 
+  // WTAO (Wrapped TAO) contract address
+  private readonly WTAO_ADDRESS = '0x9Dc08C6e2BF0F1eeD1E00670f80Df39145529F81';
+
   // ERC-20 Transfer event signature
   private readonly TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
@@ -82,6 +85,8 @@ export class UniswapFeesClient {
       const response = await (this.client as any).httpClient.get('/api/evm/log/v1', {
         address: TOKENS.usdc.contractAddress,
         topic0: this.TRANSFER_TOPIC,
+        topic1: paddedPositionManager,
+        topic2: paddedAddress,
         limit,
         page: 1,
       });
@@ -93,25 +98,16 @@ export class UniswapFeesClient {
       const logs = response.data.data || [];
       console.log(`Received ${logs.length} USDC transfer logs from API`);
 
-      // Filter client-side for Position Manager -> user address transfers
-      const normalizedPM = this.POSITION_MANAGER.toLowerCase();
-      const normalizedAddress = address.toLowerCase();
+      // Parse logs into fee collection records (API already filtered by topics)
+      const feeCollections: FeeCollectionRecord[] = logs.map((log: any) => ({
+        timestamp: log.timestamp || log.created_at || '',
+        token: 'USDC',
+        amount: this.parseAmount(log.data || '0x0', TOKENS.usdc.decimals),
+        transactionHash: log.transaction_hash || '',
+        blockNumber: log.block_number || 0,
+      }));
 
-      const feeCollections: FeeCollectionRecord[] = logs
-        .filter((log: any) => {
-          const from = this.extractAddress(log.topic1 || '').toLowerCase();
-          const to = this.extractAddress(log.topic2 || '').toLowerCase();
-          return from === normalizedPM && to === normalizedAddress;
-        })
-        .map((log: any) => ({
-          timestamp: log.timestamp || log.created_at || '',
-          token: 'USDC',
-          amount: this.parseAmount(log.data || '0x0', TOKENS.usdc.decimals),
-          transactionHash: log.transaction_hash || '',
-          blockNumber: log.block_number || 0,
-        }));
-
-      console.log(`Filtered to ${feeCollections.length} USDC fee collections`);
+      console.log(`Parsed ${feeCollections.length} USDC fee collections`);
       return feeCollections;
     } catch (error) {
       console.error('Error fetching USDC fee collections:', error);
@@ -120,57 +116,54 @@ export class UniswapFeesClient {
   }
 
   /**
-   * Get native TAO fee collections from Position Manager to an address
+   * Get WTAO (Wrapped TAO) fee collections from Position Manager to an address
    */
   private async getTaoFeeCollections(address: string, limit: number): Promise<FeeCollectionRecord[]> {
-    console.log(`Fetching TAO fee collections from Position Manager to ${address}...`);
+    const paddedPositionManager = this.padAddress(this.POSITION_MANAGER);
+    const paddedAddress = this.padAddress(address);
+
+    console.log(`Fetching WTAO fee collections from Position Manager to ${address}...`);
 
     try {
-      // Query native transfers where from = Position Manager and to = user address
-      const response = await (this.client as any).httpClient.get('/api/evm/transaction/v1', {
-        from: this.POSITION_MANAGER,
-        to: address,
+      // Query WTAO Transfer events where:
+      // - Contract is WTAO
+      // - topic1 (from) is Position Manager
+      // - topic2 (to) is the user address
+      const response = await (this.client as any).httpClient.get('/api/evm/log/v1', {
+        address: this.WTAO_ADDRESS,
+        topic0: this.TRANSFER_TOPIC,
+        topic1: paddedPositionManager,
+        topic2: paddedAddress,
         limit,
         page: 1,
       });
 
       if (!response.success || !response.data) {
-        throw new Error('Failed to fetch TAO fee collections');
+        throw new Error('Failed to fetch WTAO fee collections');
       }
 
-      const transactions = response.data.data || [];
-      console.log(`Received ${transactions.length} TAO transactions from API`);
+      const logs = response.data.data || [];
+      console.log(`Received ${logs.length} WTAO transfer logs from API`);
 
-      const feeCollections: FeeCollectionRecord[] = transactions
-        .filter((tx: any) => {
-          // Only include transactions with non-zero value
-          const value = BigInt(tx.value || '0');
-          return value > 0n;
-        })
-        .map((tx: any) => {
-          // Convert from wei (18 decimals) to TAO
-          const rawAmount = tx.value || '0';
-          const amount = this.parseAmount(rawAmount, 18);
+      // Parse logs into fee collection records (API already filtered by topics)
+      const feeCollections: FeeCollectionRecord[] = logs.map((log: any) => ({
+        timestamp: log.timestamp || log.created_at || '',
+        token: 'WTAO',
+        amount: this.parseAmount(log.data || '0x0', 18), // WTAO has 18 decimals
+        transactionHash: log.transaction_hash || '',
+        blockNumber: log.block_number || 0,
+      }));
 
-          return {
-            timestamp: tx.timestamp || '',
-            token: 'TAO',
-            amount,
-            transactionHash: tx.hash || '',
-            blockNumber: tx.block_number || 0,
-          };
-        });
-
-      console.log(`Found ${feeCollections.length} TAO fee collections`);
+      console.log(`Parsed ${feeCollections.length} WTAO fee collections`);
       return feeCollections;
     } catch (error) {
-      console.error('Error fetching TAO fee collections:', error);
+      console.error('Error fetching WTAO fee collections:', error);
       throw error;
     }
   }
 
   /**
-   * Get all fee collections (TAO + USDC) for an address
+   * Get all fee collections (WTAO + USDC) for an address
    * @param address - The EVM address
    * @param limit - Maximum number of records per token (default 1000)
    */
@@ -187,18 +180,18 @@ export class UniswapFeesClient {
     console.log(`Cache miss for ${cacheKey}, fetching from API...`);
 
     try {
-      // Fetch both TAO and USDC fee collections in parallel
-      const [taoFees, usdcFees] = await Promise.all([
+      // Fetch both WTAO and USDC fee collections in parallel
+      const [wtaoFees, usdcFees] = await Promise.all([
         this.getTaoFeeCollections(address, limit),
         this.getUsdcFeeCollections(address, limit),
       ]);
 
       // Combine and sort by timestamp (newest first)
-      const allFees = [...taoFees, ...usdcFees].sort((a, b) => {
+      const allFees = [...wtaoFees, ...usdcFees].sort((a, b) => {
         return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
       });
 
-      console.log(`Total fee collections: ${allFees.length} (${taoFees.length} TAO + ${usdcFees.length} USDC)`);
+      console.log(`Total fee collections: ${allFees.length} (${wtaoFees.length} WTAO + ${usdcFees.length} USDC)`);
 
       // Cache the result
       this.cache.set(cacheKey, allFees, this.cacheTTL);
