@@ -94,7 +94,8 @@ export class TransferHistoryClient {
         console.log(`Filtered to ${transfers.length} transfers for ${address}`);
       } else {
         console.log(`Fetching SS58 transfers for ${address}`);
-        // Use SDK method for SS58 addresses
+
+        // Fetch regular transfers
         const response = await this.client.accounts.getTransfers({
           address,
           limit,
@@ -106,7 +107,34 @@ export class TransferHistoryClient {
         }
 
         transfers = response.data.data || [];
-        console.log(`SS58 API returned ${transfers.length} total transfers, filtering for direction: ${direction}`);
+        console.log(`SS58 API returned ${transfers.length} regular transfers`);
+
+        // Also fetch delegation transfers (alpha token swaps, etc.)
+        try {
+          const delegationResponse = await (this.client as any).httpClient.get('/api/delegation/v1', {
+            nominator: address,
+            is_transfer: true,
+            limit,
+            page: 1,
+          });
+
+          if (delegationResponse.success && delegationResponse.data?.data) {
+            const delegationTransfers = delegationResponse.data.data.map((dt: any) => ({
+              from: dt.transfer_address?.ss58 || dt.transfer_address?.hex || '',
+              to: dt.nominator?.ss58 || dt.nominator?.hex || address,
+              amount: dt.amount || '0',
+              extrinsic_id: dt.extrinsic_id || '',
+              block_number: dt.block_number || 0,
+              timestamp: dt.timestamp || '',
+            }));
+
+            console.log(`Fetched ${delegationTransfers.length} delegation transfers`);
+            transfers = [...transfers, ...delegationTransfers];
+          }
+        } catch (error) {
+          console.error('Error fetching delegation transfers (continuing with regular transfers):', error);
+        }
+
         if (transfers.length > 0) {
           console.log(`First transfer keys:`, Object.keys(transfers[0]));
           console.log(`First transfer sample:`, JSON.stringify(transfers[0]).substring(0, 200));
