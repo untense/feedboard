@@ -174,9 +174,16 @@ export class TokenTransferClient {
         })
         .filter((t: any) => t !== null);
 
-      // Additional client-side filtering if needed (for 'all' direction)
-      if (direction === 'all') {
-        const normalizedAddress = address.toLowerCase();
+      // Client-side filtering to ensure accuracy regardless of API behavior
+      const normalizedAddress = address.toLowerCase();
+      if (direction === 'in') {
+        // Only keep transfers where the address is the recipient
+        transfers = transfers.filter((t) => t.to.toLowerCase() === normalizedAddress);
+      } else if (direction === 'out') {
+        // Only keep transfers where the address is the sender
+        transfers = transfers.filter((t) => t.from.toLowerCase() === normalizedAddress);
+      } else if (direction === 'all') {
+        // Keep transfers where the address is either sender or recipient
         transfers = transfers.filter(
           (t) =>
             t.from.toLowerCase() === normalizedAddress ||
