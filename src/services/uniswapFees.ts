@@ -106,16 +106,25 @@ export class UniswapFeesClient {
       const logs = response.data.data || [];
       console.log(`Received ${logs.length} USDC transfer logs from API`);
 
-      // Parse logs into fee collection records (API already filtered by topics)
-      const feeCollections: FeeCollectionRecord[] = logs.map((log: any) => ({
-        timestamp: log.timestamp || log.created_at || '',
-        token: 'USDC',
-        amount: this.parseAmount(log.data || '0x0', TOKENS.usdc.decimals),
-        transactionHash: log.transaction_hash || '',
-        blockNumber: log.block_number || 0,
-      }));
+      // Client-side filtering to ensure we only get transfers to the specific address
+      const normalizedPM = this.POSITION_MANAGER.toLowerCase();
+      const normalizedAddress = address.toLowerCase();
 
-      console.log(`Parsed ${feeCollections.length} USDC fee collections`);
+      const feeCollections: FeeCollectionRecord[] = logs
+        .filter((log: any) => {
+          const from = this.extractAddress(log.topic1 || '').toLowerCase();
+          const to = this.extractAddress(log.topic2 || '').toLowerCase();
+          return from === normalizedPM && to === normalizedAddress;
+        })
+        .map((log: any) => ({
+          timestamp: log.timestamp || log.created_at || '',
+          token: 'USDC',
+          amount: this.parseAmount(log.data || '0x0', TOKENS.usdc.decimals),
+          transactionHash: log.transaction_hash || '',
+          blockNumber: log.block_number || 0,
+        }));
+
+      console.log(`Filtered to ${feeCollections.length} USDC fee collections for ${address}`);
       return feeCollections;
     } catch (error) {
       console.error('Error fetching USDC fee collections:', error);
@@ -153,16 +162,25 @@ export class UniswapFeesClient {
       const logs = response.data.data || [];
       console.log(`Received ${logs.length} WTAO transfer logs from API`);
 
-      // Parse logs into fee collection records (API already filtered by topics)
-      const feeCollections: FeeCollectionRecord[] = logs.map((log: any) => ({
-        timestamp: log.timestamp || log.created_at || '',
-        token: 'WTAO',
-        amount: this.parseAmount(log.data || '0x0', 18), // WTAO has 18 decimals
-        transactionHash: log.transaction_hash || '',
-        blockNumber: log.block_number || 0,
-      }));
+      // Client-side filtering to ensure we only get transfers to the specific address
+      const normalizedPM = this.POSITION_MANAGER.toLowerCase();
+      const normalizedAddress = address.toLowerCase();
 
-      console.log(`Parsed ${feeCollections.length} WTAO fee collections`);
+      const feeCollections: FeeCollectionRecord[] = logs
+        .filter((log: any) => {
+          const from = this.extractAddress(log.topic1 || '').toLowerCase();
+          const to = this.extractAddress(log.topic2 || '').toLowerCase();
+          return from === normalizedPM && to === normalizedAddress;
+        })
+        .map((log: any) => ({
+          timestamp: log.timestamp || log.created_at || '',
+          token: 'WTAO',
+          amount: this.parseAmount(log.data || '0x0', 18), // WTAO has 18 decimals
+          transactionHash: log.transaction_hash || '',
+          blockNumber: log.block_number || 0,
+        }));
+
+      console.log(`Filtered to ${feeCollections.length} WTAO fee collections for ${address}`);
       return feeCollections;
     } catch (error) {
       console.error('Error fetching WTAO fee collections:', error);
