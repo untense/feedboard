@@ -10,6 +10,7 @@ import { createPriceRouter } from './routes/price.js';
 import { createTransferRouter } from './routes/transfers.js';
 import { createBalanceRouter } from './routes/balance.js';
 import { createTokenTransferRouter } from './routes/tokenTransfers.js';
+import { createUniswapPositionsRoutes } from './routes/uniswapPositions.js';
 
 const app = express();
 
@@ -57,6 +58,10 @@ app.use('/api/transfers', createTransferRouter(transferClient));
 app.use('/api/balance', createBalanceRouter(balanceClient, tokenBalanceClient));
 app.use('/api/token-transfers', createTokenTransferRouter(tokenTransferClient));
 
+// Uniswap positions route
+const uniswapPositionsRoutes = createUniswapPositionsRoutes(config.taostats);
+app.get('/api/uniswap/positions/:address', uniswapPositionsRoutes.getPositions);
+
 // Root endpoint
 app.get('/', (_req: Request, res: Response) => {
   res.json({
@@ -76,6 +81,7 @@ app.get('/', (_req: Request, res: Response) => {
       tokenTransfersEVMOut: '/api/token-transfers/evm/:tokenContract/:address/out',
       tokenTransfersSS58In: '/api/token-transfers/ss58/:tokenId/:address/in (not yet implemented)',
       tokenTransfersSS58Out: '/api/token-transfers/ss58/:tokenId/:address/out (not yet implemented)',
+      uniswapPositions: '/api/uniswap/positions/:address',
     },
   });
 });

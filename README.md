@@ -10,6 +10,7 @@ HTTP endpoints for:
 - **Wallet Balances**: Get TAO balance for SS58 (native) and EVM addresses
 - **Transfer History**: View incoming/outgoing TAO transfers for both address types
 - **Token Transfers**: Track ERC-20 token transfers (like USDC) on Bittensor EVM chain
+- **Uniswap V3 Positions**: View all Uniswap V3 liquidity positions (NFTs) owned by an EVM address
 
 ## Prerequisites
 
@@ -193,6 +194,63 @@ curl http://localhost:3000/api/token-transfers/evm/0xB833E8137FEDf80de7E908dc6fe
 ```
 
 **Note:** Token symbol shows as "UNKNOWN" currently. SS58 token transfers not yet implemented (returns HTTP 501).
+
+### Uniswap V3 Positions (EVM Only)
+
+View all Uniswap V3 liquidity positions (NFTs) owned by an EVM address on TaoFi's Uniswap V3 deployment.
+
+**Endpoint:**
+```
+GET /api/uniswap/positions/:address  # Get all Uniswap V3 positions for an address
+```
+
+**Parameters:**
+- `address`: EVM wallet address (0x...)
+
+**Response:** JSON format with full position details
+```json
+{
+  "address": "0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8",
+  "positionCount": 2,
+  "positions": [
+    {
+      "tokenId": "1985",
+      "nonce": "0",
+      "operator": "0x0000000000000000000000000000000000000000",
+      "token0": "0x9Dc08C6e2BF0F1eeD1E00670f80Df39145529F81",
+      "token0Symbol": "WTAO",
+      "token0Decimals": 18,
+      "token1": "0xB833E8137FEDf80de7E908dc6fea43a029142F20",
+      "token1Symbol": "USDC",
+      "token1Decimals": 6,
+      "fee": 3000,
+      "tickLower": -216840,
+      "tickUpper": -215820,
+      "liquidity": "19725191082182810",
+      "tokensOwed0": "0",
+      "tokensOwed1": "0"
+    }
+  ]
+}
+```
+
+**Fields:**
+- `tokenId`: NFT token ID
+- `operator`: Address authorized to manage this position
+- `token0`/`token1`: Pool token contract addresses
+- `token0Symbol`/`token1Symbol`: Token symbols (e.g., WTAO, USDC)
+- `token0Decimals`/`token1Decimals`: Token decimal places
+- `fee`: Fee tier in basis points (3000 = 0.3%)
+- `tickLower`/`tickUpper`: Price range boundaries in tick space
+- `liquidity`: Position liquidity amount
+- `tokensOwed0`/`tokensOwed1`: Uncollected fees (human-readable)
+
+**Example:**
+```bash
+curl http://localhost:3000/api/uniswap/positions/0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8
+```
+
+**Note:** Queries TaoFi's Uniswap V3 NonfungiblePositionManager contract at `0x61EeA4770d7E15e7036f8632f4bcB33AF1Af1e25` on Bittensor EVM.
 
 ## Testing
 
