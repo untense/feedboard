@@ -207,34 +207,14 @@ GET /api/uniswap/positions/:address  # Get all Uniswap V3 positions for an addre
 **Parameters:**
 - `address`: EVM wallet address (0x...)
 
-**Response:** JSON format with full position details
-```json
-{
-  "address": "0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8",
-  "positionCount": 2,
-  "positions": [
-    {
-      "tokenId": "1985",
-      "nonce": "0",
-      "operator": "0x0000000000000000000000000000000000000000",
-      "token0": "0x9Dc08C6e2BF0F1eeD1E00670f80Df39145529F81",
-      "token0Symbol": "WTAO",
-      "token0Decimals": 18,
-      "token1": "0xB833E8137FEDf80de7E908dc6fea43a029142F20",
-      "token1Symbol": "USDC",
-      "token1Decimals": 6,
-      "fee": 3000,
-      "tickLower": -216840,
-      "tickUpper": -215820,
-      "liquidity": "19725191082182810",
-      "tokensOwed0": "0",
-      "tokensOwed1": "0"
-    }
-  ]
-}
+**Response:** CSV format with full position details
+```csv
+tokenId,operator,token0,token0Symbol,token0Decimals,token1,token1Symbol,token1Decimals,fee,tickLower,tickUpper,liquidity,tokensOwed0,tokensOwed1
+1985,0x0000000000000000000000000000000000000000,0x9Dc08C6e2BF0F1eeD1E00670f80Df39145529F81,WTAO,18,0xB833E8137FEDf80de7E908dc6fea43a029142F20,USDC,6,3000,-216840,-215820,19725191082182810,0,0
+2000,0x0000000000000000000000000000000000000000,0x9Dc08C6e2BF0F1eeD1E00670f80Df39145529F81,WTAO,18,0xB833E8137FEDf80de7E908dc6fea43a029142F20,USDC,6,3000,-217320,-216300,21257572936795013,0,0
 ```
 
-**Fields:**
+**Columns:**
 - `tokenId`: NFT token ID
 - `operator`: Address authorized to manage this position
 - `token0`/`token1`: Pool token contract addresses

@@ -26,11 +26,16 @@ export function createUniswapPositionsRoutes(config: TaostatsConfig) {
 
       const positions = await client.getPositions(address);
 
-      res.json({
-        address,
-        positionCount: positions.length,
-        positions
-      });
+      // Convert to CSV format
+      const csvHeader = 'tokenId,operator,token0,token0Symbol,token0Decimals,token1,token1Symbol,token1Decimals,fee,tickLower,tickUpper,liquidity,tokensOwed0,tokensOwed1\n';
+      const csvRows = positions.map(p =>
+        `${p.tokenId},${p.operator},${p.token0},${p.token0Symbol},${p.token0Decimals},${p.token1},${p.token1Symbol},${p.token1Decimals},${p.fee},${p.tickLower},${p.tickUpper},${p.liquidity},${p.tokensOwed0},${p.tokensOwed1}`
+      ).join('\n');
+
+      const csv = csvHeader + csvRows;
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.send(csv);
     } catch (error) {
       console.error('Error in getPositions route:', error);
       next(error);
