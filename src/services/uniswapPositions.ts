@@ -2,12 +2,15 @@ import { JsonRpcProvider, Contract } from 'ethers';
 import type { TaostatsConfig } from '../types/index.js';
 import { Cache } from './cache.js';
 
+// Maximum value for uint128
+const MAX_UINT128 = 2n ** 128n - 1n;
+
 // Uniswap V3 NonfungiblePositionManager ABI (minimal - only needed functions)
 const POSITION_MANAGER_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
   'function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)',
   'function positions(uint256 tokenId) view returns (uint96 nonce, address operator, address token0, address token1, uint24 fee, int24 tickLower, int24 tickUpper, uint128 liquidity, uint256 feeGrowthInside0LastX128, uint256 feeGrowthInside1LastX128, uint128 tokensOwed0, uint128 tokensOwed1)',
-  'function collect(tuple(uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) returns (uint256 amount0, uint256 amount1)'
+  'function collect((uint256 tokenId, address recipient, uint128 amount0Max, uint128 amount1Max)) returns (uint256 amount0, uint256 amount1)'
 ];
 
 // ERC-20 ABI for token info
@@ -142,12 +145,34 @@ export class UniswapPositionsClient {
         tokensOwed1: bigint;
       }> = [];
 
-      // First pass: fetch all position data
+      // First pass: fetch all position data and uncollected fees
       for (const tokenId of tokenIds) {
         try {
           const position = await this.positionManager.positions(tokenId);
           const [nonce, operator, token0, token1, fee, tickLower, tickUpper, liquidity,
                  feeGrowthInside0LastX128, feeGrowthInside1LastX128, tokensOwed0, tokensOwed1] = position;
+
+          let actualTokensOwed0 = tokensOwed0;
+          let actualTokensOwed1 = tokensOwed1;
+
+          // For positions with liquidity, use staticCall to get actual uncollected fees
+          if (liquidity > 0n) {
+            try {
+              const collectParams = {
+                tokenId: tokenId,
+                recipient: address, // Use the owner's address as recipient for the static call
+                amount0Max: MAX_UINT128,
+                amount1Max: MAX_UINT128
+              };
+              const fees = await this.positionManager.collect.staticCall(collectParams);
+              actualTokensOwed0 = fees[0];
+              actualTokensOwed1 = fees[1];
+              console.log(`Position ${tokenId}: Uncollected fees - token0: ${actualTokensOwed0}, token1: ${actualTokensOwed1}`);
+            } catch (error) {
+              console.error(`Error fetching fees for token ID ${tokenId}:`, error);
+              // Fall back to tokensOwed from position struct
+            }
+          }
 
           positionData.push({
             tokenId,
@@ -159,8 +184,8 @@ export class UniswapPositionsClient {
             tickLower,
             tickUpper,
             liquidity,
-            tokensOwed0,
-            tokensOwed1
+            tokensOwed0: actualTokensOwed0,
+            tokensOwed1: actualTokensOwed1
           });
         } catch (error) {
           console.error(`Error fetching position details for token ID ${tokenId}:`, error);
