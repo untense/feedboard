@@ -34,7 +34,7 @@ export function createUniswapPositionsRoutes(config: TaostatsConfig) {
 
       const csv = csvHeader + csvRows;
 
-      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.send(csv);
     } catch (error) {
       console.error('Error in getPositions route:', error);
