@@ -8,7 +8,7 @@ export function createUniswapFeesRouter(config: TaostatsConfig): Router {
 
   /**
    * GET /api/uniswap/fees/:address
-   * Get all Uniswap V3 fee collections (TAO + USDC) for an EVM address
+   * Get all Uniswap V3 fee collections (WTAO + USDC) for an EVM address, combined by transaction
    */
   router.get('/:address', async (req: Request, res: Response) => {
     try {
@@ -20,16 +20,16 @@ export function createUniswapFeesRouter(config: TaostatsConfig): Router {
         return;
       }
 
-      const feeCollections = await feesClient.getFeeCollections(address);
+      const feeCollections = await feesClient.getCombinedFeeCollections(address);
 
-      // Return as CSV
+      // Return as CSV with combined amounts per transaction
       const csv = [
-        'timestamp,token,amount,transactionHash,blockNumber',
+        'timestamp,wtaoAmount,usdcAmount,transactionHash,blockNumber',
         ...feeCollections.map((fee) =>
           [
             fee.timestamp,
-            fee.token,
-            fee.amount,
+            fee.wtaoAmount,
+            fee.usdcAmount,
             fee.transactionHash,
             fee.blockNumber,
           ].join(',')

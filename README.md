@@ -247,19 +247,19 @@ GET /api/uniswap/fees/:address  # Get all fee collections (WTAO + USDC) for an a
 **Parameters:**
 - `address`: EVM wallet address (0x...)
 
-**Response:** CSV format with fee collection details
+**Response:** CSV format with fee collection details (grouped by transaction)
 ```csv
-timestamp,token,amount,transactionHash,blockNumber
-2025-10-28T15:08:36Z,WTAO,0.09,0x1ecb9d394ce365baf41399682094a393ca7de03229939794befe78b2538c3552,6759109
-2025-10-28T15:08:36Z,USDC,40.215867,0x1ecb9d394ce365baf41399682094a393ca7de03229939794befe78b2538c3552,6759109
-2025-10-28T15:03:48Z,WTAO,24.999996492435653,0x58f31916ca04dc0691120d020fa2998df180e69edb984d2eb17864d1782edba5,6759085
-2025-10-28T15:03:48Z,USDC,11221.1225,0x58f31916ca04dc0691120d020fa2998df180e69edb984d2eb17864d1782edba5,6759085
+timestamp,wtaoAmount,usdcAmount,transactionHash,blockNumber
+2025-10-28T15:08:36Z,0.09,40.215867,0x1ecb9d394ce365baf41399682094a393ca7de03229939794befe78b2538c3552,6759109
+2025-10-28T15:03:48Z,24.999996492435653,11221.1225,0x58f31916ca04dc0691120d020fa2998df180e69edb984d2eb17864d1782edba5,6759085
+2025-10-28T15:03:24Z,12.889998123346201,5772.093018,0x2257c5a7acf471a5e8200ddedc04fc6c0b0f9eed57f99d454bd87841cea6c0fa,6759083
+2025-10-28T14:50:00Z,0,8351.825959,0x2df029251b2a3652dfb8110db5e078bffafd2fd03b1811eb0944921429f0e005,6759016
 ```
 
 **Columns:**
 - `timestamp`: When the fee collection occurred
-- `token`: Token symbol (WTAO or USDC)
-- `amount`: Amount collected (human-readable)
+- `wtaoAmount`: WTAO amount collected (0 if none)
+- `usdcAmount`: USDC amount collected (0 if none)
 - `transactionHash`: Transaction hash
 - `blockNumber`: Block number
 
@@ -270,9 +270,10 @@ curl http://localhost:3000/api/uniswap/fees/0xC7d40db455F5BaEDB4a8348dE69e8527cD
 
 **Features:**
 - Tracks fee collections from all Uniswap V3 positions owned by the address
-- Combines WTAO and USDC fee collections in chronological order
+- Groups WTAO and USDC collections from the same transaction into a single row
 - Only shows transfers from the NonfungiblePositionManager contract (fee collections)
 - Amounts are displayed in human-readable format (not raw blockchain values)
+- Shows `0` for tokens not collected in a given transaction
 - Note: Shows WTAO (Wrapped TAO) as that's what Uniswap V3 uses for trading pairs
 
 ### Address Conversion

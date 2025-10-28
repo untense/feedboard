@@ -11,6 +11,14 @@ export interface FeeCollectionRecord {
   blockNumber: number;
 }
 
+export interface CombinedFeeCollection {
+  timestamp: string;
+  wtaoAmount: string;
+  usdcAmount: string;
+  transactionHash: string;
+  blockNumber: number;
+}
+
 export class UniswapFeesClient {
   private client: TaoStatsClient;
   private cache: Cache<FeeCollectionRecord[]>;
@@ -201,5 +209,48 @@ export class UniswapFeesClient {
       console.error('Error fetching fee collections:', error);
       throw new Error('Failed to fetch fee collections');
     }
+  }
+
+  /**
+   * Get combined fee collections grouped by transaction
+   * @param address - The EVM address
+   * @param limit - Maximum number of records per token (default 1000)
+   */
+  async getCombinedFeeCollections(address: string, limit: number = 1000): Promise<CombinedFeeCollection[]> {
+    const allFees = await this.getFeeCollections(address, limit);
+
+    // Group by transaction hash
+    const byTransaction = new Map<string, { wtao?: string; usdc?: string; timestamp: string; blockNumber: number }>();
+
+    for (const fee of allFees) {
+      const existing = byTransaction.get(fee.transactionHash) || {
+        timestamp: fee.timestamp,
+        blockNumber: fee.blockNumber,
+      };
+
+      if (fee.token === 'WTAO') {
+        existing.wtao = fee.amount;
+      } else if (fee.token === 'USDC') {
+        existing.usdc = fee.amount;
+      }
+
+      byTransaction.set(fee.transactionHash, existing);
+    }
+
+    // Convert to combined format
+    const combined: CombinedFeeCollection[] = Array.from(byTransaction.entries()).map(([txHash, data]) => ({
+      timestamp: data.timestamp,
+      wtaoAmount: data.wtao || '0',
+      usdcAmount: data.usdc || '0',
+      transactionHash: txHash,
+      blockNumber: data.blockNumber,
+    }));
+
+    // Sort by timestamp (newest first)
+    combined.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    console.log(`Combined into ${combined.length} unique transactions`);
+
+    return combined;
   }
 }
