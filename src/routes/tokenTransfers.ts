@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import type { TokenTransferClient } from '../services/tokenTransfers.js';
+import { getTokenBySymbol } from '../config/tokens.js';
 
 export function createTokenTransferRouter(tokenTransferClient: TokenTransferClient): Router {
   const router = Router();
@@ -16,13 +17,27 @@ export function createTokenTransferRouter(tokenTransferClient: TokenTransferClie
   }
 
   /**
-   * GET /api/token-transfers/evm/:tokenContract/:address/in
+   * GET /api/token-transfers/evm/:tokenSymbol/:address/in
    * Returns incoming token transfers for an EVM address in CSV format
+   * @param tokenSymbol - Token symbol (e.g., "usdc", "wtao")
    */
-  router.get('/evm/:tokenContract/:address/in', async (req: Request, res: Response) => {
+  router.get('/evm/:tokenSymbol/:address/in', async (req: Request, res: Response) => {
     try {
-      const { tokenContract, address } = req.params;
-      const transfers = await tokenTransferClient.getIncomingEvmTokenTransfers(address, tokenContract);
+      const { tokenSymbol, address } = req.params;
+
+      // Look up token by symbol
+      const token = getTokenBySymbol(tokenSymbol);
+      if (!token) {
+        res.status(400).type('text/plain').send(`Unknown token symbol: ${tokenSymbol}. Supported tokens: usdc`);
+        return;
+      }
+
+      if (!token.contractAddress) {
+        res.status(400).type('text/plain').send(`Token ${tokenSymbol} is a native token and does not have ERC-20 transfers. Use /api/transfers endpoints instead.`);
+        return;
+      }
+
+      const transfers = await tokenTransferClient.getIncomingEvmTokenTransfers(address, token.contractAddress);
 
       const csv = tokenTransfersToCSV(transfers);
 
@@ -30,7 +45,7 @@ export function createTokenTransferRouter(tokenTransferClient: TokenTransferClie
       res.type('text/plain');
       res.send(csv);
     } catch (error) {
-      console.error('Error in /evm/:tokenContract/:address/in endpoint:', error);
+      console.error('Error in /evm/:tokenSymbol/:address/in endpoint:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const errorDetails = (error as any).response || (error as any).statusCode || '';
       res.status(500).type('text/plain').send(`Error fetching token transfers: ${errorMessage}\nDetails: ${JSON.stringify(errorDetails)}`);
@@ -38,13 +53,27 @@ export function createTokenTransferRouter(tokenTransferClient: TokenTransferClie
   });
 
   /**
-   * GET /api/token-transfers/evm/:tokenContract/:address/out
+   * GET /api/token-transfers/evm/:tokenSymbol/:address/out
    * Returns outgoing token transfers for an EVM address in CSV format
+   * @param tokenSymbol - Token symbol (e.g., "usdc", "wtao")
    */
-  router.get('/evm/:tokenContract/:address/out', async (req: Request, res: Response) => {
+  router.get('/evm/:tokenSymbol/:address/out', async (req: Request, res: Response) => {
     try {
-      const { tokenContract, address } = req.params;
-      const transfers = await tokenTransferClient.getOutgoingEvmTokenTransfers(address, tokenContract);
+      const { tokenSymbol, address } = req.params;
+
+      // Look up token by symbol
+      const token = getTokenBySymbol(tokenSymbol);
+      if (!token) {
+        res.status(400).type('text/plain').send(`Unknown token symbol: ${tokenSymbol}. Supported tokens: usdc`);
+        return;
+      }
+
+      if (!token.contractAddress) {
+        res.status(400).type('text/plain').send(`Token ${tokenSymbol} is a native token and does not have ERC-20 transfers. Use /api/transfers endpoints instead.`);
+        return;
+      }
+
+      const transfers = await tokenTransferClient.getOutgoingEvmTokenTransfers(address, token.contractAddress);
 
       const csv = tokenTransfersToCSV(transfers);
 
@@ -52,7 +81,7 @@ export function createTokenTransferRouter(tokenTransferClient: TokenTransferClie
       res.type('text/plain');
       res.send(csv);
     } catch (error) {
-      console.error('Error in /evm/:tokenContract/:address/out endpoint:', error);
+      console.error('Error in /evm/:tokenSymbol/:address/out endpoint:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const errorDetails = (error as any).response || (error as any).statusCode || '';
       res.status(500).type('text/plain').send(`Error fetching token transfers: ${errorMessage}\nDetails: ${JSON.stringify(errorDetails)}`);

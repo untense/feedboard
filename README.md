@@ -170,12 +170,12 @@ Track ERC-20 token transfers on the Bittensor EVM chain (e.g., USDC, wrapped tok
 
 **EVM Token Transfers:**
 ```
-GET /api/token-transfers/evm/:tokenContract/:address/in   # Incoming token transfers
-GET /api/token-transfers/evm/:tokenContract/:address/out  # Outgoing token transfers
+GET /api/token-transfers/evm/:tokenSymbol/:address/in   # Incoming token transfers
+GET /api/token-transfers/evm/:tokenSymbol/:address/out  # Outgoing token transfers
 ```
 
 **Parameters:**
-- `tokenContract`: The token contract address (e.g., USDC: `0xB833E8137FEDf80de7E908dc6fea43a029142F20`)
+- `tokenSymbol`: Token short name (e.g., `usdc`)
 - `address`: The wallet address
 
 **Response:** CSV format
@@ -187,11 +187,14 @@ timestamp,from,to,amount,token,tokenContract,transactionHash,blockNumber
 **Example:**
 ```bash
 # Get incoming USDC transfers
-curl http://localhost:3000/api/token-transfers/evm/0xB833E8137FEDf80de7E908dc6fea43a029142F20/0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8/in
+curl http://localhost:3000/api/token-transfers/evm/usdc/0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8/in
 
 # Get outgoing USDC transfers
-curl http://localhost:3000/api/token-transfers/evm/0xB833E8137FEDf80de7E908dc6fea43a029142F20/0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8/out
+curl http://localhost:3000/api/token-transfers/evm/usdc/0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8/out
 ```
+
+**Supported Tokens:**
+- `usdc` - USD Coin (0xB833E8137FEDf80de7E908dc6fea43a029142F20)
 
 **Note:** Token symbol shows as "UNKNOWN" currently. SS58 token transfers not yet implemented (returns HTTP 501).
 
