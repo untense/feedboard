@@ -43,6 +43,7 @@ export function createUniswapPositionsRoutes(config: TaostatsConfig) {
   }
 
   return {
+    client,
     getPositions
   };
 }

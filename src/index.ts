@@ -59,8 +59,11 @@ app.use('/api/transfers', createTransferRouter(transferClient));
 app.use('/api/balance', createBalanceRouter(balanceClient, tokenBalanceClient));
 app.use('/api/token-transfers', createTokenTransferRouter(tokenTransferClient));
 
-// Uniswap positions route
+// Initialize Uniswap positions client with background updates
 const uniswapPositionsRoutes = createUniswapPositionsRoutes(config.taostats);
+await uniswapPositionsRoutes.client.init();
+console.log('✓ Uniswap positions client initialized with background updates');
+
 app.get('/api/uniswap/positions/:address', uniswapPositionsRoutes.getPositions);
 
 // Address conversion route

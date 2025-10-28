@@ -56,13 +56,16 @@ export class UniswapPositionsClient {
   private cache: Cache<UniswapPosition[]>;
   private tokenInfoCache: Map<string, { symbol: string; decimals: number; name: string }> = new Map();
   private cacheTTL: number;
+  private updateInterval: number;
+  private updateTimer: NodeJS.Timeout | null = null;
+  private trackedAddresses: Set<string> = new Set();
 
   // TaoFi Uniswap V3 NonfungiblePositionManager on Bittensor EVM
   private readonly POSITION_MANAGER_ADDRESS = '0x61EeA4770d7E15e7036f8632f4bcB33AF1Af1e25';
   private readonly FACTORY_ADDRESS = '0x20D0Cdf9004bf56BCa52A25C9288AAd0EbB97D59'; // TaoFi Uniswap V3 Factory
   private readonly EVM_RPC_URL = 'https://evm.chain.opentensor.ai';
 
-  constructor(config: TaostatsConfig, cacheTTL: number = 300000) {
+  constructor(config: TaostatsConfig, cacheTTL: number = 300000, updateInterval: number = 300000) {
     this.provider = new JsonRpcProvider(this.EVM_RPC_URL);
     this.positionManager = new Contract(
       this.POSITION_MANAGER_ADDRESS,
@@ -71,6 +74,25 @@ export class UniswapPositionsClient {
     );
     this.cache = new Cache<UniswapPosition[]>();
     this.cacheTTL = cacheTTL; // 5 minutes default
+    this.updateInterval = updateInterval; // 5 minutes default
+  }
+
+  /**
+   * Initialize the client and start background updates
+   */
+  async init(): Promise<void> {
+    // Start background update loop
+    this.startBackgroundUpdates();
+  }
+
+  /**
+   * Stop background updates (cleanup)
+   */
+  async stop(): Promise<void> {
+    if (this.updateTimer) {
+      clearTimeout(this.updateTimer);
+      this.updateTimer = null;
+    }
   }
 
   /**
@@ -215,6 +237,9 @@ export class UniswapPositionsClient {
    * @returns Array of position details
    */
   async getPositions(address: string): Promise<UniswapPosition[]> {
+    // Track this address for background updates
+    this.trackedAddresses.add(address.toLowerCase());
+
     const cacheKey = `uniswap-positions-${address.toLowerCase()}`;
 
     // Check cache first
@@ -421,5 +446,49 @@ export class UniswapPositionsClient {
       console.error(`Error fetching Uniswap positions for ${address}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Background update loop - refreshes positions for all tracked addresses
+   */
+  private async positionsUpdateLoop(): Promise<void> {
+    if (this.trackedAddresses.size === 0) {
+      console.log('No Uniswap position addresses to update');
+      return;
+    }
+
+    console.log(`Updating Uniswap positions for ${this.trackedAddresses.size} tracked addresses...`);
+
+    for (const address of this.trackedAddresses) {
+      try {
+        // Fetch and cache positions (this will update the cache)
+        await this.getPositions(address);
+        // Wait 2 seconds between updates to be nice to the RPC endpoint
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (error) {
+        console.error(`Failed to update Uniswap positions for ${address}:`, error);
+      }
+    }
+
+    console.log('Uniswap positions update loop complete');
+  }
+
+  /**
+   * Start background updates
+   */
+  private startBackgroundUpdates(): void {
+    const runUpdate = async () => {
+      try {
+        await this.positionsUpdateLoop();
+      } catch (error) {
+        console.error('Uniswap positions update error:', error);
+      }
+
+      // Schedule next update
+      this.updateTimer = setTimeout(runUpdate, this.updateInterval);
+    };
+
+    // Start the loop
+    runUpdate();
   }
 }
