@@ -20,6 +20,16 @@ const ERC20_ABI = [
   'function name() view returns (string)'
 ];
 
+// Uniswap V3 Pool ABI (minimal - for getting current tick)
+const POOL_ABI = [
+  'function slot0() view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)'
+];
+
+// Uniswap V3 Factory ABI (minimal - for getting pool address)
+const FACTORY_ABI = [
+  'function getPool(address tokenA, address tokenB, uint24 fee) view returns (address pool)'
+];
+
 export interface UniswapPosition {
   tokenId: string;
   nonce: string;
@@ -49,6 +59,7 @@ export class UniswapPositionsClient {
 
   // TaoFi Uniswap V3 NonfungiblePositionManager on Bittensor EVM
   private readonly POSITION_MANAGER_ADDRESS = '0x61EeA4770d7E15e7036f8632f4bcB33AF1Af1e25';
+  private readonly FACTORY_ADDRESS = '0x20D0Cdf9004bf56BCa52A25C9288AAd0EbB97D59'; // TaoFi Uniswap V3 Factory
   private readonly EVM_RPC_URL = 'https://evm.chain.opentensor.ai';
 
   constructor(config: TaostatsConfig, cacheTTL: number = 300000) {
@@ -60,6 +71,113 @@ export class UniswapPositionsClient {
     );
     this.cache = new Cache<UniswapPosition[]>();
     this.cacheTTL = cacheTTL; // 5 minutes default
+  }
+
+  /**
+   * Get current tick from a Uniswap V3 pool
+   */
+  private async getCurrentTick(token0: string, token1: string, fee: number): Promise<number | null> {
+    try {
+      // Get pool address from factory
+      const factory = new Contract(this.FACTORY_ADDRESS, FACTORY_ABI, this.provider);
+      const poolAddress = await factory.getPool(token0, token1, fee);
+
+      if (poolAddress === '0x0000000000000000000000000000000000000000') {
+        return null; // Pool doesn't exist
+      }
+
+      // Get current tick from pool
+      const pool = new Contract(poolAddress, POOL_ABI, this.provider);
+      const slot0 = await pool.slot0();
+      return Number(slot0[1]); // tick is the second element
+    } catch (error) {
+      console.error(`Error getting current tick for pool ${token0}/${token1}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate token amounts from liquidity and tick range
+   */
+  private calculateTokenAmounts(
+    liquidity: bigint,
+    tickLower: number,
+    tickUpper: number,
+    currentTick: number,
+    decimals0: number,
+    decimals1: number
+  ): { amount0: string; amount1: string } {
+    if (liquidity === 0n) {
+      return { amount0: '0', amount1: '0' };
+    }
+
+    const Q96 = 2n ** 96n;
+
+    // Calculate sqrt prices from ticks
+    const sqrtPriceLower = this.getSqrtRatioAtTick(tickLower);
+    const sqrtPriceUpper = this.getSqrtRatioAtTick(tickUpper);
+    const sqrtPriceCurrent = this.getSqrtRatioAtTick(currentTick);
+
+    let amount0 = 0n;
+    let amount1 = 0n;
+
+    if (currentTick < tickLower) {
+      // All liquidity in token0
+      amount0 = (liquidity * Q96 * (sqrtPriceUpper - sqrtPriceLower)) / (sqrtPriceUpper * sqrtPriceLower);
+    } else if (currentTick >= tickUpper) {
+      // All liquidity in token1
+      amount1 = (liquidity * (sqrtPriceUpper - sqrtPriceLower)) / Q96;
+    } else {
+      // Liquidity is split between both tokens
+      amount0 = (liquidity * Q96 * (sqrtPriceUpper - sqrtPriceCurrent)) / (sqrtPriceUpper * sqrtPriceCurrent);
+      amount1 = (liquidity * (sqrtPriceCurrent - sqrtPriceLower)) / Q96;
+    }
+
+    // Convert to human-readable format
+    const amount0Readable = (Number(amount0) / Math.pow(10, decimals0)).toFixed(6);
+    const amount1Readable = (Number(amount1) / Math.pow(10, decimals1)).toFixed(6);
+
+    return {
+      amount0: amount0Readable,
+      amount1: amount1Readable
+    };
+  }
+
+  /**
+   * Get sqrtPriceX96 from tick
+   */
+  private getSqrtRatioAtTick(tick: number): bigint {
+    const absTick = Math.abs(tick);
+
+    // Constants for tick to sqrt price calculation
+    let ratio = (absTick & 0x1) !== 0
+      ? 0xfffcb933bd6fad37aa2d162d1a594001n
+      : 0x100000000000000000000000000000000n;
+
+    if ((absTick & 0x2) !== 0) ratio = (ratio * 0xfff97272373d413259a46990580e213an) >> 128n;
+    if ((absTick & 0x4) !== 0) ratio = (ratio * 0xfff2e50f5f656932ef12357cf3c7fdccn) >> 128n;
+    if ((absTick & 0x8) !== 0) ratio = (ratio * 0xffe5caca7e10e4e61c3624eaa0941cd0n) >> 128n;
+    if ((absTick & 0x10) !== 0) ratio = (ratio * 0xffcb9843d60f6159c9db58835c926644n) >> 128n;
+    if ((absTick & 0x20) !== 0) ratio = (ratio * 0xff973b41fa98c081472e6896dfb254c0n) >> 128n;
+    if ((absTick & 0x40) !== 0) ratio = (ratio * 0xff2ea16466c96a3843ec78b326b52861n) >> 128n;
+    if ((absTick & 0x80) !== 0) ratio = (ratio * 0xfe5dee046a99a2a811c461f1969c3053n) >> 128n;
+    if ((absTick & 0x100) !== 0) ratio = (ratio * 0xfcbe86c7900a88aedcffc83b479aa3a4n) >> 128n;
+    if ((absTick & 0x200) !== 0) ratio = (ratio * 0xf987a7253ac413176f2b074cf7815e54n) >> 128n;
+    if ((absTick & 0x400) !== 0) ratio = (ratio * 0xf3392b0822b70005940c7a398e4b70f3n) >> 128n;
+    if ((absTick & 0x800) !== 0) ratio = (ratio * 0xe7159475a2c29b7443b29c7fa6e889d9n) >> 128n;
+    if ((absTick & 0x1000) !== 0) ratio = (ratio * 0xd097f3bdfd2022b8845ad8f792aa5825n) >> 128n;
+    if ((absTick & 0x2000) !== 0) ratio = (ratio * 0xa9f746462d870fdf8a65dc1f90e061e5n) >> 128n;
+    if ((absTick & 0x4000) !== 0) ratio = (ratio * 0x70d869a156d2a1b890bb3df62baf32f7n) >> 128n;
+    if ((absTick & 0x8000) !== 0) ratio = (ratio * 0x31be135f97d08fd981231505542fcfa6n) >> 128n;
+    if ((absTick & 0x10000) !== 0) ratio = (ratio * 0x9aa508b5b7a84e1c677de54f3e99bc9n) >> 128n;
+    if ((absTick & 0x20000) !== 0) ratio = (ratio * 0x5d6af8dedb81196699c329225ee604n) >> 128n;
+    if ((absTick & 0x40000) !== 0) ratio = (ratio * 0x2216e584f5fa1ea926041bedfe98n) >> 128n;
+    if ((absTick & 0x80000) !== 0) ratio = (ratio * 0x48a170391f7dc42444e8fa2n) >> 128n;
+
+    if (tick > 0) ratio = (1n << 256n) / ratio;
+
+    // Downcast to 160 bits (sqrtPriceX96)
+    return ratio >> 32n;
   }
 
   /**
@@ -211,7 +329,28 @@ export class UniswapPositionsClient {
       const tokenInfoResults = await Promise.all(tokenInfoPromises);
       const tokenInfoMap = new Map(tokenInfoResults.map(r => [r.address, r.info]));
 
-      // Second pass: build final position objects
+      // Collect unique pools and fetch current ticks
+      const uniquePools = new Map<string, { token0: string; token1: string; fee: number }>();
+      for (const pos of positionData) {
+        if (pos.liquidity > 0n) {
+          const poolKey = `${pos.token0}-${pos.token1}-${pos.fee}`;
+          if (!uniquePools.has(poolKey)) {
+            uniquePools.set(poolKey, { token0: pos.token0, token1: pos.token1, fee: Number(pos.fee) });
+          }
+        }
+      }
+
+      console.log(`Fetching current ticks for ${uniquePools.size} unique pools`);
+
+      // Fetch current ticks for all unique pools
+      const poolTickPromises = Array.from(uniquePools.entries()).map(async ([poolKey, pool]) => {
+        const currentTick = await this.getCurrentTick(pool.token0, pool.token1, pool.fee);
+        return { poolKey, currentTick };
+      });
+      const poolTickResults = await Promise.all(poolTickPromises);
+      const poolTickMap = new Map(poolTickResults.map(r => [r.poolKey, r.currentTick]));
+
+      // Second pass: build final position objects with calculated token amounts
       const positions: UniswapPosition[] = [];
       for (const pos of positionData) {
         // For 0-liquidity positions, use placeholder or empty values to avoid fetching token info
@@ -229,6 +368,26 @@ export class UniswapPositionsClient {
         const tokensOwed0Readable = (Number(pos.tokensOwed0) / Math.pow(10, token0Info.decimals)).toString();
         const tokensOwed1Readable = (Number(pos.tokensOwed1) / Math.pow(10, token1Info.decimals)).toString();
 
+        // Calculate token amounts from liquidity
+        let token0Amount = '0';
+        let token1Amount = '0';
+        if (pos.liquidity > 0n) {
+          const poolKey = `${pos.token0}-${pos.token1}-${pos.fee}`;
+          const currentTick = poolTickMap.get(poolKey);
+          if (currentTick !== null && currentTick !== undefined) {
+            const amounts = this.calculateTokenAmounts(
+              pos.liquidity,
+              Number(pos.tickLower),
+              Number(pos.tickUpper),
+              currentTick,
+              token0Info.decimals,
+              token1Info.decimals
+            );
+            token0Amount = amounts.amount0;
+            token1Amount = amounts.amount1;
+          }
+        }
+
         positions.push({
           tokenId: pos.tokenId.toString(),
           nonce: pos.nonce.toString(),
@@ -245,9 +404,11 @@ export class UniswapPositionsClient {
           liquidity: pos.liquidity.toString(),
           tokensOwed0: tokensOwed0Readable,
           tokensOwed1: tokensOwed1Readable,
+          token0Amount,
+          token1Amount,
         });
 
-        const liquidityDesc = pos.liquidity > 0n ? pos.liquidity.toString() : '0 (closed)';
+        const liquidityDesc = pos.liquidity > 0n ? `${token0Amount} ${token0Info.symbol} + ${token1Amount} ${token1Info.symbol}` : '0 (closed)';
         console.log(`Position ${pos.tokenId}: ${token0Info.symbol}/${token1Info.symbol} (${Number(pos.fee)/10000}% fee), Liquidity: ${liquidityDesc}`);
       }
 

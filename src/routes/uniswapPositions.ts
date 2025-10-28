@@ -27,9 +27,9 @@ export function createUniswapPositionsRoutes(config: TaostatsConfig) {
       const positions = await client.getPositions(address);
 
       // Convert to CSV format
-      const csvHeader = 'tokenId,operator,token0,token0Symbol,token0Decimals,token1,token1Symbol,token1Decimals,fee,tickLower,tickUpper,liquidity,tokensOwed0,tokensOwed1\n';
+      const csvHeader = 'tokenId,operator,token0,token0Symbol,token0Decimals,token1,token1Symbol,token1Decimals,fee,tickLower,tickUpper,token0Amount,token1Amount,tokensOwed0,tokensOwed1\n';
       const csvRows = positions.map(p =>
-        `${p.tokenId},${p.operator},${p.token0},${p.token0Symbol},${p.token0Decimals},${p.token1},${p.token1Symbol},${p.token1Decimals},${p.fee},${p.tickLower},${p.tickUpper},${p.liquidity},${p.tokensOwed0},${p.tokensOwed1}`
+        `${p.tokenId},${p.operator},${p.token0},${p.token0Symbol},${p.token0Decimals},${p.token1},${p.token1Symbol},${p.token1Decimals},${p.fee},${p.tickLower},${p.tickUpper},${p.token0Amount || '0'},${p.token1Amount || '0'},${p.tokensOwed0},${p.tokensOwed1}`
       ).join('\n');
 
       const csv = csvHeader + csvRows;
