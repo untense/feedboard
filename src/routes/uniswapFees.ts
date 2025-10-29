@@ -4,7 +4,7 @@ import type { TaostatsConfig } from '../types/index.js';
 
 export function createUniswapFeesRouter(config: TaostatsConfig): Router {
   const router = Router();
-  const feesClient = new UniswapFeesClient(config, 60000); // 60s cache TTL
+  const feesClient = new UniswapFeesClient(config, 3600000); // 1 hour cache TTL (historical data)
 
   /**
    * GET /api/uniswap/fees/:address
