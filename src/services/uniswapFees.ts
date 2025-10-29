@@ -156,7 +156,7 @@ export class UniswapFeesClient {
 
     const feeAmounts = new Map<string, { usdc: string; wtao: string }>();
     const normalizedWtao = this.WTAO_ADDRESS.toLowerCase();
-    const normalizedUsdc = TOKENS.usdc.contractAddress.toLowerCase();
+    const normalizedUsdc = TOKENS.usdc.contractAddress!.toLowerCase(); // Non-null: USDC always has contract address
     const normalizedPM = this.POSITION_MANAGER.toLowerCase();
     const normalizedAddress = address.toLowerCase();
 
