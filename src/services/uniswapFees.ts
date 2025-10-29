@@ -195,11 +195,29 @@ export class UniswapFeesClient {
 
         const logs = response.data.data || [];
 
-        // Process events for our transactions
+        // First pass: identify transactions with DecreaseLiquidity events (not fee collections)
+        const liquidityWithdrawals = new Set<string>();
+        for (const log of logs) {
+          const txHash = log.transaction_hash;
+          if (!txsInBlock.some((tx) => tx.hash === txHash)) {
+            continue;
+          }
+          // DecreaseLiquidity event indicates liquidity withdrawal, not fee collection
+          if (log.event_name === 'DecreaseLiquidity') {
+            liquidityWithdrawals.add(txHash);
+          }
+        }
+
+        // Second pass: process events for fee collections only
         for (const log of logs) {
           const txHash = log.transaction_hash;
           if (!txsInBlock.some((tx) => tx.hash === txHash)) {
             continue; // Not one of our transactions
+          }
+
+          // Skip transactions with DecreaseLiquidity events
+          if (liquidityWithdrawals.has(txHash)) {
+            continue;
           }
 
           // Initialize fee amounts for this transaction if not exists
@@ -229,6 +247,11 @@ export class UniswapFeesClient {
             fees.wtao = (parseFloat(fees.wtao) + parseFloat(amount)).toString();
             console.log(`  Block ${blockNumber}, TX ${txHash.slice(0, 10)}...: Found ${amount} WTAO (unwrapped)`);
           }
+        }
+
+        // Log filtered transactions
+        if (liquidityWithdrawals.size > 0) {
+          console.log(`  Block ${blockNumber}: Filtered out ${liquidityWithdrawals.size} liquidity withdrawals`);
         }
       } catch (error) {
         console.error(`Error fetching logs for block ${blockNumber}:`, error);
