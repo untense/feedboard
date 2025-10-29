@@ -92,80 +92,73 @@ export class UniswapFeesClient {
   }
 
   /**
-   * Get USDC fee collections from Position Manager to an address with pagination
+   * Get transactions from address to Position Manager
+   * Much more efficient than paginating through all USDC transfers
    */
-  private async getUsdcFeeCollections(address: string, limit: number = 10000): Promise<FeeCollectionRecord[]> {
-    const paddedPositionManager = this.padAddress(this.POSITION_MANAGER);
-
-    console.log(`Fetching USDC fee collections from Position Manager to ${address}...`);
+  private async getPositionManagerTransactions(
+    address: string,
+    limit: number = 1000
+  ): Promise<Array<{ hash: string; timestamp: string; blockNumber: number }>> {
+    console.log(`Fetching transactions from ${address} to Position Manager...`);
 
     try {
-      const allFeeCollections: FeeCollectionRecord[] = [];
-      const normalizedPM = this.POSITION_MANAGER.toLowerCase();
-      const normalizedAddress = address.toLowerCase();
+      const allTransactions: Array<{ hash: string; timestamp: string; blockNumber: number }> = [];
 
       let page = 1;
       let hasMore = true;
-      const maxPages = Math.ceil(limit / 200); // Fetch enough pages to reach desired limit
+      const maxPages = Math.ceil(limit / 200);
 
-      while (hasMore && allFeeCollections.length < limit && page <= maxPages) {
-        const response = await (this.client as any).httpClient.get('/api/evm/log/v1', {
-          address: TOKENS.usdc.contractAddress,
-          topic0: this.TRANSFER_TOPIC,
-          topic1: paddedPositionManager,
+      while (hasMore && allTransactions.length < limit && page <= maxPages) {
+        const response = await (this.client as any).httpClient.get('/api/evm/transaction/v1', {
+          address: address,
+          to_address: this.POSITION_MANAGER,
           limit: 200,
           page,
         });
 
         if (!response.success || !response.data) {
-          throw new Error('Failed to fetch USDC fee collections');
+          throw new Error('Failed to fetch Position Manager transactions');
         }
 
-        const logs = response.data.data || [];
-        console.log(`Page ${page}: Received ${logs.length} USDC transfer logs from API`);
+        const txs = response.data.data || [];
+        console.log(`Page ${page}: Received ${txs.length} transactions to Position Manager`);
 
-        // Client-side filtering to ensure we only get transfers to the specific address
-        const filtered = logs
-          .filter((log: any) => {
-            const from = this.extractAddress(log.topic1 || '').toLowerCase();
-            const to = this.extractAddress(log.topic2 || '').toLowerCase();
-            return from === normalizedPM && to === normalizedAddress;
-          })
-          .map((log: any) => ({
-            timestamp: log.timestamp || log.created_at || '',
-            token: 'USDC',
-            amount: this.parseAmount(log.data || '0x0', TOKENS.usdc.decimals),
-            transactionHash: log.transaction_hash || '',
-            blockNumber: log.block_number || 0,
-          }));
-
-        allFeeCollections.push(...filtered);
-        console.log(`Page ${page}: Found ${filtered.length} USDC fee collections (total: ${allFeeCollections.length})`);
+        for (const tx of txs) {
+          allTransactions.push({
+            hash: tx.hash,
+            timestamp: tx.timestamp,
+            blockNumber: tx.block_number,
+          });
+        }
 
         // Check if we have more pages
-        hasMore = logs.length === 200;
+        hasMore = txs.length === 200;
         page++;
       }
 
-      console.log(`Filtered to ${allFeeCollections.length} total USDC fee collections for ${address}`);
-      return allFeeCollections.slice(0, limit);
+      console.log(`Found ${allTransactions.length} total transactions to Position Manager`);
+      return allTransactions.slice(0, limit);
     } catch (error) {
-      console.error('Error fetching USDC fee collections:', error);
+      console.error('Error fetching Position Manager transactions:', error);
       throw error;
     }
   }
 
   /**
-   * Get WTAO amounts from specific transactions by querying block events via Taostats API
-   * This is much more efficient than RPC (which returns null) or paginating all WTAO transfers
+   * Get both USDC and WTAO amounts from specific transactions by querying block events
+   * Returns map of transaction hash -> {usdc, wtao}
    */
-  private async getWtaoAmountsFromTransactions(
+  private async getFeeAmountsFromTransactions(
+    address: string,
     transactions: Array<{ hash: string; timestamp: string; blockNumber: number }>
-  ): Promise<Map<string, string>> {
-    console.log(`Fetching WTAO amounts from ${transactions.length} transactions via block queries...`);
+  ): Promise<Map<string, { usdc: string; wtao: string }>> {
+    console.log(`Fetching fee amounts from ${transactions.length} transactions via block queries...`);
 
-    const wtaoAmounts = new Map<string, string>();
+    const feeAmounts = new Map<string, { usdc: string; wtao: string }>();
     const normalizedWtao = this.WTAO_ADDRESS.toLowerCase();
+    const normalizedUsdc = TOKENS.usdc.contractAddress.toLowerCase();
+    const normalizedPM = this.POSITION_MANAGER.toLowerCase();
+    const normalizedAddress = address.toLowerCase();
 
     // Group transactions by block number to minimize API calls
     const blockMap = new Map<number, Array<{ hash: string; timestamp: string; blockNumber: number }>>();
@@ -202,26 +195,38 @@ export class UniswapFeesClient {
 
         const logs = response.data.data || [];
 
-        // Find Withdrawal events on WTAO contract for our transactions
+        // Process events for our transactions
         for (const log of logs) {
           const txHash = log.transaction_hash;
           if (!txsInBlock.some((tx) => tx.hash === txHash)) {
-            continue; // Not one of our fee collection transactions
+            continue; // Not one of our transactions
           }
 
-          // Check for Withdrawal event on WTAO contract
-          // Withdrawal(address indexed src, uint wad)
+          // Initialize fee amounts for this transaction if not exists
+          if (!feeAmounts.has(txHash)) {
+            feeAmounts.set(txHash, { usdc: '0', wtao: '0' });
+          }
+          const fees = feeAmounts.get(txHash)!;
+
+          // Check for USDC Transfer from Position Manager to user
+          if (
+            log.address?.toLowerCase() === normalizedUsdc &&
+            log.event_name === 'Transfer' &&
+            log.args?.from?.toLowerCase() === normalizedPM &&
+            log.args?.to?.toLowerCase() === normalizedAddress
+          ) {
+            const amountRaw = log.args.value || '0';
+            const amount = this.parseAmount('0x' + BigInt(amountRaw).toString(16), TOKENS.usdc.decimals);
+            fees.usdc = (parseFloat(fees.usdc) + parseFloat(amount)).toString();
+            console.log(`  Block ${blockNumber}, TX ${txHash.slice(0, 10)}...: Found ${amount} USDC`);
+          }
+
+          // Check for WTAO Withdrawal event (WTAO being unwrapped)
           if (log.address?.toLowerCase() === normalizedWtao && log.event_name === 'Withdrawal') {
             const wadRaw = log.args?.wad || '0';
-            // Convert wadRaw to hex for parseAmount
             const wadHex = '0x' + BigInt(wadRaw).toString(16);
             const amount = this.parseAmount(wadHex, 18);
-
-            // Sum up multiple withdrawals in the same transaction (if any)
-            const existing = wtaoAmounts.get(txHash) || '0';
-            const total = (parseFloat(existing) + parseFloat(amount)).toString();
-            wtaoAmounts.set(txHash, total);
-
+            fees.wtao = (parseFloat(fees.wtao) + parseFloat(amount)).toString();
             console.log(`  Block ${blockNumber}, TX ${txHash.slice(0, 10)}...: Found ${amount} WTAO (unwrapped)`);
           }
         }
@@ -230,17 +235,27 @@ export class UniswapFeesClient {
       }
     }
 
-    console.log(`Found WTAO amounts for ${wtaoAmounts.size} of ${transactions.length} transactions`);
-    return wtaoAmounts;
+    // Filter to only transactions that have USDC (fee collections)
+    const feeCollectionTxs = new Map<string, { usdc: string; wtao: string }>();
+    for (const [txHash, amounts] of feeAmounts.entries()) {
+      if (parseFloat(amounts.usdc) > 0) {
+        feeCollectionTxs.set(txHash, amounts);
+      }
+    }
+
+    console.log(
+      `Found ${feeCollectionTxs.size} fee collections (filtered from ${transactions.length} total transactions)`
+    );
+    return feeCollectionTxs;
   }
 
   /**
    * Get combined fee collections grouped by transaction with permanent caching
-   * Uses optimized approach: Taostats API for USDC + block queries for WTAO Withdrawal events
+   * Optimized approach: Query transactions to Position Manager, then extract fee amounts from blocks
    * @param address - The EVM address
-   * @param limit - Maximum number of records to fetch (default 10000)
+   * @param limit - Maximum number of transactions to fetch (default 1000)
    */
-  async getCombinedFeeCollections(address: string, limit: number = 10000): Promise<CombinedFeeCollection[]> {
+  async getCombinedFeeCollections(address: string, limit: number = 1000): Promise<CombinedFeeCollection[]> {
     const cacheKey = `uniswap-fees-${address}`;
 
     // Check cache first
@@ -263,12 +278,12 @@ export class UniswapFeesClient {
     );
 
     try {
-      // Step 1: Get USDC fee collections (these define which transactions are fee collections)
-      const usdcFees = await this.getUsdcFeeCollections(address, limit);
-      console.log(`Found ${usdcFees.length} USDC fee collections for ${address}`);
+      // Step 1: Get all transactions from address to Position Manager
+      const transactions = await this.getPositionManagerTransactions(address, limit);
+      console.log(`Found ${transactions.length} transactions to Position Manager for ${address}`);
 
-      if (usdcFees.length === 0) {
-        console.log('No USDC fee collections found, returning empty result');
+      if (transactions.length === 0) {
+        console.log('No Position Manager transactions found, returning empty result');
 
         // Cache empty result to avoid repeated API calls
         this.cache.set(
@@ -284,32 +299,54 @@ export class UniswapFeesClient {
         return [];
       }
 
-      // Step 2: Extract transaction details for EVM RPC lookup
-      const transactions = usdcFees.map((fee) => ({
-        hash: fee.transactionHash,
-        timestamp: fee.timestamp,
-        blockNumber: fee.blockNumber,
-      }));
+      // Step 2: Extract fee amounts (both USDC and WTAO) from transaction blocks
+      const feeAmounts = await this.getFeeAmountsFromTransactions(address, transactions);
+      console.log(`Found ${feeAmounts.size} fee collections from ${transactions.length} transactions`);
 
-      // Step 3: Query EVM RPC to get WTAO amounts for these specific transactions
-      const wtaoAmounts = await this.getWtaoAmountsFromTransactions(transactions);
+      if (feeAmounts.size === 0) {
+        console.log('No fee collections found in transactions, returning empty result');
 
-      // Step 4: Create fee collection records with both USDC and WTAO
+        // Cache empty result
+        this.cache.set(
+          cacheKey,
+          {
+            collections: [],
+            lastBlockFetched: this.START_BLOCK,
+            lastFetchTime: now,
+          },
+          Infinity
+        );
+
+        return [];
+      }
+
+      // Step 3: Convert to fee collection records format
       const allFees: FeeCollectionRecord[] = [];
 
-      for (const usdcFee of usdcFees) {
-        // Add USDC record
-        allFees.push(usdcFee);
+      for (const [txHash, amounts] of feeAmounts.entries()) {
+        // Find the transaction details
+        const tx = transactions.find((t) => t.hash === txHash);
+        if (!tx) continue;
 
-        // Add WTAO record if it exists for this transaction
-        const wtaoAmount = wtaoAmounts.get(usdcFee.transactionHash);
-        if (wtaoAmount && wtaoAmount !== '0') {
+        // Add USDC record
+        if (amounts.usdc !== '0') {
           allFees.push({
-            timestamp: usdcFee.timestamp,
+            timestamp: tx.timestamp,
+            token: 'USDC',
+            amount: amounts.usdc,
+            transactionHash: txHash,
+            blockNumber: tx.blockNumber,
+          });
+        }
+
+        // Add WTAO record
+        if (amounts.wtao !== '0') {
+          allFees.push({
+            timestamp: tx.timestamp,
             token: 'WTAO',
-            amount: wtaoAmount,
-            transactionHash: usdcFee.transactionHash,
-            blockNumber: usdcFee.blockNumber,
+            amount: amounts.wtao,
+            transactionHash: txHash,
+            blockNumber: tx.blockNumber,
           });
         }
       }
