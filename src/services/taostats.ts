@@ -204,8 +204,11 @@ export class TaostatsClient {
         return false;
       }
 
-      // August 1, 2025 00:00:00 UTC - cutoff date for historical data
-      const cutoffDate = new Date('2025-08-01T00:00:00Z');
+      // One year ago from today - cutoff date for historical data
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      oneYearAgo.setHours(0, 0, 0, 0);
+      const cutoffDate = oneYearAgo;
 
       // Group by day - keep only the latest record for each day
       const dailyPrices = new Map<string, HistoricalPriceData>();
@@ -218,7 +221,7 @@ export class TaostatsClient {
         // Check if we've reached the target date
         if (timestamp < cutoffDate) {
           reachedTarget = true;
-          continue; // Skip records before August 2025
+          continue; // Skip records older than one year
         }
 
         const currentData = {
@@ -266,7 +269,7 @@ export class TaostatsClient {
       const nextPage = await this.persistentCache.getNextPageToFetch();
 
       if (nextPage === -1) {
-        console.log('Background fetch complete: Reached target date (August 1, 2025)');
+        console.log('Background fetch complete: Reached target date (one year ago)');
         // Schedule next check in 12 hours
         setTimeout(() => {
           this.isFetchingInBackground = false;
