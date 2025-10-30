@@ -6,6 +6,11 @@ export function createUniswapFeesRouter(config: TaostatsConfig): Router {
   const router = Router();
   const feesClient = new UniswapFeesClient(config, 3600000); // 1 hour cache TTL (historical data)
 
+  // Initialize persistent cache
+  feesClient.init().catch((error) => {
+    console.error('Failed to initialize Uniswap fees client:', error);
+  });
+
   /**
    * GET /api/uniswap/fees/:address
    * Get all Uniswap V3 fee collections (WTAO + USDC) for an EVM address, combined by transaction

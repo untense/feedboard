@@ -27,6 +27,7 @@ export class PersistentCache {
   private currentPricePath: string;
   private balancesPath: string;
   private tokenBalancesPath: string;
+  private uniswapFeesDir: string;
 
   constructor(cacheDir: string = './data/cache') {
     this.cacheDir = cacheDir;
@@ -35,6 +36,7 @@ export class PersistentCache {
     this.currentPricePath = path.join(cacheDir, 'current_price.json');
     this.balancesPath = path.join(cacheDir, 'balances.json');
     this.tokenBalancesPath = path.join(cacheDir, 'token_balances.json');
+    this.uniswapFeesDir = path.join(cacheDir, 'uniswap_fees');
   }
 
   /**
@@ -43,6 +45,7 @@ export class PersistentCache {
   async init(): Promise<void> {
     try {
       await fs.mkdir(this.cacheDir, { recursive: true });
+      await fs.mkdir(this.uniswapFeesDir, { recursive: true });
     } catch (error) {
       console.error('Failed to create cache directory:', error);
       throw error;
@@ -336,5 +339,34 @@ export class PersistentCache {
       timestamp: new Date().toISOString(),
     };
     await fs.writeFile(this.tokenBalancesPath, JSON.stringify(balances, null, 2), 'utf-8');
+  }
+
+  /**
+   * Read Uniswap fee collections for a specific address from cache
+   */
+  async readUniswapFees(address: string): Promise<any | null> {
+    try {
+      const filePath = path.join(this.uniswapFeesDir, `${address}.json`);
+      const data = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(data);
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        return null; // File doesn't exist yet
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Write Uniswap fee collections for a specific address to cache
+   */
+  async writeUniswapFees(address: string, fees: any[]): Promise<void> {
+    const filePath = path.join(this.uniswapFeesDir, `${address}.json`);
+    const cacheData = {
+      fees,
+      lastUpdated: new Date().toISOString(),
+      recordCount: fees.length,
+    };
+    await fs.writeFile(filePath, JSON.stringify(cacheData, null, 2), 'utf-8');
   }
 }

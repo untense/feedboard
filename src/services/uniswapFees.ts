@@ -2,6 +2,7 @@ import { TaoStatsClient } from '@taostats/sdk';
 import { JsonRpcProvider } from 'ethers';
 import type { TaostatsConfig } from '../types/index.js';
 import { Cache } from './cache.js';
+import { PersistentCache } from './persistentCache.js';
 import { TOKENS } from '../config/tokens.js';
 
 export interface FeeCollectionRecord {
@@ -30,7 +31,9 @@ export class UniswapFeesClient {
   private client: TaoStatsClient;
   private provider: JsonRpcProvider;
   private cache: Cache<CachedFeeData>;
+  private persistentCache: PersistentCache;
   private cacheTTL: number;
+  private isFetchingInBackground: Map<string, boolean> = new Map();
 
   // Bittensor EVM RPC endpoint
   private readonly EVM_RPC_URL = 'https://evm.chain.opentensor.ai';
@@ -54,7 +57,16 @@ export class UniswapFeesClient {
     });
     this.provider = new JsonRpcProvider(this.EVM_RPC_URL);
     this.cache = new Cache();
+    this.persistentCache = new PersistentCache();
     this.cacheTTL = cacheTTL; // Only used to check for new data, historical data never expires
+  }
+
+  /**
+   * Initialize the client (must be called before use)
+   */
+  async init(): Promise<void> {
+    await this.persistentCache.init();
+    console.log('✓ Uniswap fees client initialized with persistent cache');
   }
 
   /**
@@ -275,46 +287,51 @@ export class UniswapFeesClient {
   /**
    * Get combined fee collections grouped by transaction with permanent caching
    * Optimized approach: Query transactions to Position Manager, then extract fee amounts from blocks
+   * Returns cached data immediately, triggers background fetch if cache is missing/stale
    * @param address - The EVM address
    * @param limit - Maximum number of transactions to fetch (default 1000)
    */
   async getCombinedFeeCollections(address: string, limit: number = 1000): Promise<CombinedFeeCollection[]> {
-    const cacheKey = `uniswap-fees-${address}`;
-    const now = Date.now();
+    // Check persistent cache first
+    const cachedData = await this.persistentCache.readUniswapFees(address);
 
-    // Check cache first
-    const cached = this.cache.get(cacheKey);
+    if (cachedData && cachedData.fees) {
+      console.log(`Persistent cache hit for ${address} (${cachedData.recordCount} records)`);
 
-    // Historical data is cached permanently with Infinity TTL - just check if it exists
-    if (cached) {
-      console.log(`Cache hit for ${cacheKey} (${cached.collections.length} fee collections)`);
+      // Trigger background update if cache is stale (optional - can be disabled for truly immutable historical data)
+      const cacheAge = Date.now() - new Date(cachedData.lastUpdated).getTime();
+      if (cacheAge > this.cacheTTL && !this.isFetchingInBackground.get(address)) {
+        console.log(`Cache is ${Math.round(cacheAge / 1000)}s old, triggering background update...`);
+        this.fetchAndCacheFeesInBackground(address, limit);
+      }
 
-      // Convert to combined format
-      const combined = this.combineByTransaction(cached.collections);
-      return combined;
+      return cachedData.fees;
     }
 
-    console.log(`Cache miss for ${cacheKey}, fetching all historical data...`);
+    // No cache exists - check if background fetch is already running
+    if (this.isFetchingInBackground.get(address)) {
+      console.log(`Background fetch already in progress for ${address}, returning empty for now...`);
+      return [];
+    }
 
+    // No cache and no fetch running - do first fetch synchronously
+    console.log(`No cache for ${address}, performing first fetch synchronously...`);
+    const fees = await this.fetchAndCacheFees(address, limit);
+    return fees;
+  }
+
+  /**
+   * Fetch and cache fees (used for both sync and background fetching)
+   */
+  private async fetchAndCacheFees(address: string, limit: number): Promise<CombinedFeeCollection[]> {
     try {
       // Step 1: Get all transactions from address to Position Manager
       const transactions = await this.getPositionManagerTransactions(address, limit);
       console.log(`Found ${transactions.length} transactions to Position Manager for ${address}`);
 
       if (transactions.length === 0) {
-        console.log('No Position Manager transactions found, returning empty result');
-
-        // Cache empty result to avoid repeated API calls
-        this.cache.set(
-          cacheKey,
-          {
-            collections: [],
-            lastBlockFetched: this.START_BLOCK,
-            lastFetchTime: now,
-          },
-          Infinity // Never expire
-        );
-
+        console.log('No Position Manager transactions found, caching empty result');
+        await this.persistentCache.writeUniswapFees(address, []);
         return [];
       }
 
@@ -323,19 +340,8 @@ export class UniswapFeesClient {
       console.log(`Found ${feeAmounts.size} fee collections from ${transactions.length} transactions`);
 
       if (feeAmounts.size === 0) {
-        console.log('No fee collections found in transactions, returning empty result');
-
-        // Cache empty result
-        this.cache.set(
-          cacheKey,
-          {
-            collections: [],
-            lastBlockFetched: this.START_BLOCK,
-            lastFetchTime: now,
-          },
-          Infinity
-        );
-
+        console.log('No fee collections found in transactions, caching empty result');
+        await this.persistentCache.writeUniswapFees(address, []);
         return [];
       }
 
@@ -370,29 +376,41 @@ export class UniswapFeesClient {
         }
       }
 
-      // Find the highest block number
-      const lastBlockFetched = Math.max(...allFees.map((f) => f.blockNumber));
-
-      // Cache the result permanently (historical data never expires)
-      this.cache.set(
-        cacheKey,
-        {
-          collections: allFees,
-          lastBlockFetched,
-          lastFetchTime: now,
-        },
-        Infinity // Never expire - historical data is permanent
-      );
-
-      console.log(`Cached ${allFees.length} fee collection records up to block ${lastBlockFetched}`);
-
       // Convert to combined format
       const combined = this.combineByTransaction(allFees);
+
+      // Cache to persistent storage
+      await this.persistentCache.writeUniswapFees(address, combined);
+      console.log(`Cached ${combined.length} fee collections to persistent storage`);
+
       return combined;
     } catch (error) {
       console.error('Error fetching fee collections:', error);
-      throw new Error('Failed to fetch fee collections');
+      throw error;
     }
+  }
+
+  /**
+   * Fetch and cache fees in background (non-blocking)
+   */
+  private fetchAndCacheFeesInBackground(address: string, limit: number): void {
+    if (this.isFetchingInBackground.get(address)) {
+      return; // Already fetching
+    }
+
+    this.isFetchingInBackground.set(address, true);
+    console.log(`Starting background fetch for ${address}...`);
+
+    this.fetchAndCacheFees(address, limit)
+      .then(() => {
+        console.log(`Background fetch complete for ${address}`);
+      })
+      .catch((error) => {
+        console.error(`Background fetch error for ${address}:`, error);
+      })
+      .finally(() => {
+        this.isFetchingInBackground.set(address, false);
+      });
   }
 
   /**
