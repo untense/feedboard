@@ -6,8 +6,14 @@ export function createUniswapFeesRouter(config: TaostatsConfig): Router {
   const router = Router();
   const feesClient = new UniswapFeesClient(config, 3600000); // 1 hour cache TTL (historical data)
 
-  // Initialize persistent cache
-  feesClient.init().catch((error) => {
+  // Initialize persistent cache and start background updates
+  feesClient.init().then(() => {
+    // Pre-fetch fees for known addresses in background
+    const trackedAddresses = [
+      '0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8', // Add your tracked addresses here
+    ];
+    feesClient.startBackgroundUpdates(trackedAddresses);
+  }).catch((error) => {
     console.error('Failed to initialize Uniswap fees client:', error);
   });
 

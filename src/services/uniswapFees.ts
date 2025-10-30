@@ -70,6 +70,35 @@ export class UniswapFeesClient {
   }
 
   /**
+   * Start background updates for tracked addresses
+   */
+  startBackgroundUpdates(addresses: string[], limit: number = 1000): void {
+    console.log(`Starting background fee collection updates for ${addresses.length} addresses...`);
+
+    // Start background fetch for each address
+    for (const address of addresses) {
+      // Check if cache exists
+      this.persistentCache.readUniswapFees(address).then((cachedData) => {
+        if (!cachedData) {
+          console.log(`No cache for ${address}, starting background fetch...`);
+          this.fetchAndCacheFeesInBackground(address, limit);
+        } else {
+          console.log(`Cache exists for ${address} (${cachedData.recordCount} records, last updated: ${cachedData.lastUpdated})`);
+
+          // Check if cache is stale (older than 1 hour)
+          const cacheAge = Date.now() - new Date(cachedData.lastUpdated).getTime();
+          if (cacheAge > this.cacheTTL) {
+            console.log(`Cache is stale (${Math.round(cacheAge / 3600000)}h old), triggering background update...`);
+            this.fetchAndCacheFeesInBackground(address, limit);
+          }
+        }
+      }).catch((error) => {
+        console.error(`Error checking cache for ${address}:`, error);
+      });
+    }
+  }
+
+  /**
    * Pad address to 32 bytes (64 hex chars) for topic filtering
    */
   private padAddress(address: string): string {
@@ -310,14 +339,14 @@ export class UniswapFeesClient {
 
     // No cache exists - check if background fetch is already running
     if (this.isFetchingInBackground.get(address)) {
-      console.log(`Background fetch already in progress for ${address}, returning empty for now...`);
+      console.log(`Background fetch in progress for ${address}, returning empty (check back in a few minutes)...`);
       return [];
     }
 
-    // No cache and no fetch running - do first fetch synchronously
-    console.log(`No cache for ${address}, performing first fetch synchronously...`);
-    const fees = await this.fetchAndCacheFees(address, limit);
-    return fees;
+    // No cache and no fetch running - start background fetch and return empty
+    console.log(`No cache for ${address}, starting background fetch (will be available in ~5 minutes)...`);
+    this.fetchAndCacheFeesInBackground(address, limit);
+    return [];
   }
 
   /**

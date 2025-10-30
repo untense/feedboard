@@ -48,3 +48,4 @@ data/
 # TAO liquidity allocation analysis files
 tao_liquidity_allocation.csv
 tao_liquidity_allocation.md
+tao_liquidity_positions_200k.csv
