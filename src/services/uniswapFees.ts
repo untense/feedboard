@@ -280,13 +280,13 @@ export class UniswapFeesClient {
    */
   async getCombinedFeeCollections(address: string, limit: number = 1000): Promise<CombinedFeeCollection[]> {
     const cacheKey = `uniswap-fees-${address}`;
+    const now = Date.now();
 
     // Check cache first
     const cached = this.cache.get(cacheKey);
-    const now = Date.now();
 
-    // If we have cached data and it's not stale (within cacheTTL), return it
-    if (cached && now - cached.lastFetchTime < this.cacheTTL) {
+    // Historical data is cached permanently with Infinity TTL - just check if it exists
+    if (cached) {
       console.log(`Cache hit for ${cacheKey} (${cached.collections.length} fee collections)`);
 
       // Convert to combined format
@@ -294,11 +294,7 @@ export class UniswapFeesClient {
       return combined;
     }
 
-    console.log(
-      cached
-        ? `Cache stale for ${cacheKey}, fetching new data since block ${cached.lastBlockFetched}...`
-        : `Cache miss for ${cacheKey}, fetching all historical data...`
-    );
+    console.log(`Cache miss for ${cacheKey}, fetching all historical data...`);
 
     try {
       // Step 1: Get all transactions from address to Position Manager
