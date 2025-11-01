@@ -4,6 +4,19 @@ import type { TransferHistoryClient } from '../services/transferHistory.js';
 export function createTransferRouter(transferClient: TransferHistoryClient): Router {
   const router = Router();
 
+  // Initialize persistent cache and start background updates
+  transferClient.init().then(() => {
+    // Pre-fetch transfers for known addresses in background
+    const trackedAddresses = [
+      '0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8', // Add your tracked addresses here
+      // Add SS58 addresses as well if needed
+    ];
+    // Start background updates for incoming transfers (most commonly requested)
+    transferClient.startBackgroundUpdates(trackedAddresses, 'in');
+  }).catch((error) => {
+    console.error('Failed to initialize transfer history client:', error);
+  });
+
   /**
    * Helper function to convert transfers to CSV format
    */

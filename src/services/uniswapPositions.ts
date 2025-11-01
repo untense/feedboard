@@ -1,6 +1,7 @@
 import { JsonRpcProvider, Contract } from 'ethers';
 import type { TaostatsConfig } from '../types/index.js';
 import { Cache } from './cache.js';
+import { PersistentCache } from './persistentCache.js';
 
 // Maximum value for uint128
 const MAX_UINT128 = 2n ** 128n - 1n;
@@ -54,18 +55,20 @@ export class UniswapPositionsClient {
   private provider: JsonRpcProvider;
   private positionManager: Contract;
   private cache: Cache<UniswapPosition[]>;
+  private persistentCache: PersistentCache;
   private tokenInfoCache: Map<string, { symbol: string; decimals: number; name: string }> = new Map();
   private cacheTTL: number;
   private updateInterval: number;
   private updateTimer: NodeJS.Timeout | null = null;
   private trackedAddresses: Set<string> = new Set();
+  private isFetchingInBackground: Map<string, boolean> = new Map();
 
   // TaoFi Uniswap V3 NonfungiblePositionManager on Bittensor EVM
   private readonly POSITION_MANAGER_ADDRESS = '0x61EeA4770d7E15e7036f8632f4bcB33AF1Af1e25';
   private readonly FACTORY_ADDRESS = '0x20D0Cdf9004bf56BCa52A25C9288AAd0EbB97D59'; // TaoFi Uniswap V3 Factory
   private readonly EVM_RPC_URL = 'https://evm.chain.opentensor.ai';
 
-  constructor(config: TaostatsConfig, cacheTTL: number = 300000, updateInterval: number = 300000) {
+  constructor(config: TaostatsConfig, cacheTTL: number = 3600000, updateInterval: number = 3600000) {
     this.provider = new JsonRpcProvider(this.EVM_RPC_URL);
     this.positionManager = new Contract(
       this.POSITION_MANAGER_ADDRESS,
@@ -73,16 +76,17 @@ export class UniswapPositionsClient {
       this.provider
     );
     this.cache = new Cache<UniswapPosition[]>();
-    this.cacheTTL = cacheTTL; // 5 minutes default
-    this.updateInterval = updateInterval; // 5 minutes default
+    this.persistentCache = new PersistentCache();
+    this.cacheTTL = cacheTTL; // 1 hour default (positions don't change as frequently)
+    this.updateInterval = updateInterval; // 1 hour default
   }
 
   /**
    * Initialize the client and start background updates
    */
   async init(): Promise<void> {
-    // Start background update loop
-    this.startBackgroundUpdates();
+    await this.persistentCache.init();
+    console.log('✓ Uniswap positions client initialized with persistent cache');
   }
 
   /**
@@ -232,23 +236,78 @@ export class UniswapPositionsClient {
   }
 
   /**
+   * Start background updates for tracked addresses
+   */
+  startBackgroundUpdates(addresses: string[]): void {
+    console.log(`Starting background Uniswap positions updates for ${addresses.length} addresses...`);
+
+    // Start background fetch for each address
+    for (const address of addresses) {
+      const normalizedAddress = address.toLowerCase();
+      this.trackedAddresses.add(normalizedAddress);
+
+      // Check if cache exists
+      this.persistentCache.readUniswapPositions(normalizedAddress).then((cachedData) => {
+        if (!cachedData) {
+          console.log(`No positions cache for ${normalizedAddress}, starting background fetch...`);
+          this.fetchAndCachePositionsInBackground(normalizedAddress);
+        } else {
+          console.log(`Positions cache exists for ${normalizedAddress} (${cachedData.recordCount} records, last updated: ${cachedData.lastUpdated})`);
+
+          // Check if cache is stale (older than 1 hour)
+          const cacheAge = Date.now() - new Date(cachedData.lastUpdated).getTime();
+          if (cacheAge > this.cacheTTL) {
+            console.log(`Positions cache is stale (${Math.round(cacheAge / 3600000)}h old), triggering background update...`);
+            this.fetchAndCachePositionsInBackground(normalizedAddress);
+          }
+        }
+      }).catch((error) => {
+        console.error(`Error checking positions cache for ${normalizedAddress}:`, error);
+      });
+    }
+  }
+
+  /**
    * Get all Uniswap V3 positions for an address
+   * Returns cached data immediately, triggers background fetch if cache is missing/stale
    * @param address - EVM address
    * @returns Array of position details
    */
   async getPositions(address: string): Promise<UniswapPosition[]> {
-    // Track this address for background updates
-    this.trackedAddresses.add(address.toLowerCase());
+    const normalizedAddress = address.toLowerCase();
 
-    const cacheKey = `uniswap-positions-${address.toLowerCase()}`;
+    // Check persistent cache first
+    const cachedData = await this.persistentCache.readUniswapPositions(normalizedAddress);
 
-    // Check cache first
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      console.log(`Cache hit for Uniswap positions: ${address}`);
-      return cached;
+    if (cachedData && cachedData.positions) {
+      console.log(`Persistent cache hit for positions ${normalizedAddress} (${cachedData.recordCount} records)`);
+
+      // Trigger background update if cache is stale
+      const cacheAge = Date.now() - new Date(cachedData.lastUpdated).getTime();
+      if (cacheAge > this.cacheTTL && !this.isFetchingInBackground.get(normalizedAddress)) {
+        console.log(`Positions cache is ${Math.round(cacheAge / 1000)}s old, triggering background update...`);
+        this.fetchAndCachePositionsInBackground(normalizedAddress);
+      }
+
+      return cachedData.positions;
     }
 
+    // No cache exists - check if background fetch is already running
+    if (this.isFetchingInBackground.get(normalizedAddress)) {
+      console.log(`Background fetch in progress for positions ${normalizedAddress}, returning empty...`);
+      return [];
+    }
+
+    // No cache and no fetch running - start background fetch and return empty
+    console.log(`No positions cache for ${normalizedAddress}, starting background fetch...`);
+    this.fetchAndCachePositionsInBackground(normalizedAddress);
+    return [];
+  }
+
+  /**
+   * Fetch positions from blockchain (used for both sync and background fetching)
+   */
+  private async fetchPositions(address: string): Promise<UniswapPosition[]> {
     console.log(`Cache miss for Uniswap positions: ${address}, fetching from blockchain...`);
 
     try {
@@ -437,9 +496,9 @@ export class UniswapPositionsClient {
         console.log(`Position ${pos.tokenId}: ${token0Info.symbol}/${token1Info.symbol} (${Number(pos.fee)/10000}% fee), Liquidity: ${liquidityDesc}`);
       }
 
-      // Cache the results
-      this.cache.set(cacheKey, positions, this.cacheTTL);
-      console.log(`Cached ${positions.length} positions for ${address} (TTL: ${this.cacheTTL}ms)`);
+      // Cache to persistent storage
+      await this.persistentCache.writeUniswapPositions(address, positions);
+      console.log(`Cached ${positions.length} positions to persistent storage for ${address}`);
 
       return positions;
     } catch (error) {
@@ -449,46 +508,26 @@ export class UniswapPositionsClient {
   }
 
   /**
-   * Background update loop - refreshes positions for all tracked addresses
+   * Fetch and cache positions in background (non-blocking)
    */
-  private async positionsUpdateLoop(): Promise<void> {
-    if (this.trackedAddresses.size === 0) {
-      console.log('No Uniswap position addresses to update');
-      return;
+  private fetchAndCachePositionsInBackground(address: string): void {
+    if (this.isFetchingInBackground.get(address)) {
+      return; // Already fetching
     }
 
-    console.log(`Updating Uniswap positions for ${this.trackedAddresses.size} tracked addresses...`);
+    this.isFetchingInBackground.set(address, true);
+    console.log(`Starting background positions fetch for ${address}...`);
 
-    for (const address of this.trackedAddresses) {
-      try {
-        // Fetch and cache positions (this will update the cache)
-        await this.getPositions(address);
-        // Wait 2 seconds between updates to be nice to the RPC endpoint
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      } catch (error) {
-        console.error(`Failed to update Uniswap positions for ${address}:`, error);
-      }
-    }
-
-    console.log('Uniswap positions update loop complete');
+    this.fetchPositions(address)
+      .then(() => {
+        console.log(`Background positions fetch complete for ${address}`);
+      })
+      .catch((error) => {
+        console.error(`Background positions fetch error for ${address}:`, error);
+      })
+      .finally(() => {
+        this.isFetchingInBackground.set(address, false);
+      });
   }
 
-  /**
-   * Start background updates
-   */
-  private startBackgroundUpdates(): void {
-    const runUpdate = async () => {
-      try {
-        await this.positionsUpdateLoop();
-      } catch (error) {
-        console.error('Uniswap positions update error:', error);
-      }
-
-      // Schedule next update
-      this.updateTimer = setTimeout(runUpdate, this.updateInterval);
-    };
-
-    // Start the loop
-    runUpdate();
-  }
 }

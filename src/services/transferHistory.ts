@@ -1,19 +1,62 @@
 import { TaoStatsClient } from '@taostats/sdk';
 import type { TransferRecord, TaostatsConfig } from '../types/index.js';
 import { Cache } from './cache.js';
+import { PersistentCache } from './persistentCache.js';
 
 export class TransferHistoryClient {
   private client: TaoStatsClient;
   private cache: Cache<TransferRecord[]>;
+  private persistentCache: PersistentCache;
   private cacheTTL: number; // Cache TTL in milliseconds
+  private isFetchingInBackground: Map<string, boolean> = new Map();
 
-  constructor(config: TaostatsConfig, cacheTTL: number = 60000) {
+  constructor(config: TaostatsConfig, cacheTTL: number = 3600000) {
     this.client = new TaoStatsClient({
       apiKey: config.apiKey,
       baseUrl: config.apiUrl,
     });
     this.cache = new Cache();
-    this.cacheTTL = cacheTTL; // Default 60 seconds
+    this.persistentCache = new PersistentCache();
+    this.cacheTTL = cacheTTL; // Default 1 hour
+  }
+
+  /**
+   * Initialize the client (must be called before use)
+   */
+  async init(): Promise<void> {
+    await this.persistentCache.init();
+    console.log('✓ Transfer history client initialized with persistent cache');
+  }
+
+  /**
+   * Start background updates for tracked addresses
+   */
+  startBackgroundUpdates(addresses: string[], direction: 'in' | 'out' | 'all' = 'all', limit: number = 1000): void {
+    console.log(`Starting background transfer updates for ${addresses.length} addresses...`);
+
+    // Start background fetch for each address
+    for (const address of addresses) {
+      const cacheKey = `${address}_${direction}_${limit}`;
+
+      // Check if cache exists
+      this.persistentCache.readTransfers(address, direction, limit).then((cachedData) => {
+        if (!cachedData) {
+          console.log(`No transfers cache for ${cacheKey}, starting background fetch...`);
+          this.fetchAndCacheTransfersInBackground(address, direction, limit);
+        } else {
+          console.log(`Transfers cache exists for ${cacheKey} (${cachedData.recordCount} records, last updated: ${cachedData.lastUpdated})`);
+
+          // Check if cache is stale (older than 1 hour)
+          const cacheAge = Date.now() - new Date(cachedData.lastUpdated).getTime();
+          if (cacheAge > this.cacheTTL) {
+            console.log(`Transfers cache is stale (${Math.round(cacheAge / 3600000)}h old), triggering background update...`);
+            this.fetchAndCacheTransfersInBackground(address, direction, limit);
+          }
+        }
+      }).catch((error) => {
+        console.error(`Error checking transfers cache for ${cacheKey}:`, error);
+      });
+    }
   }
 
   /**
@@ -26,6 +69,7 @@ export class TransferHistoryClient {
 
   /**
    * Get transfer history for a given address (SS58 or EVM)
+   * Returns cached data immediately, triggers background fetch if cache is missing/stale
    * @param address - The SS58 or EVM address
    * @param direction - Filter by 'in' (incoming), 'out' (outgoing), or 'all'
    * @param limit - Maximum number of records to return (default 1000)
@@ -35,16 +79,45 @@ export class TransferHistoryClient {
     direction: 'in' | 'out' | 'all' = 'all',
     limit: number = 1000
   ): Promise<TransferRecord[]> {
-    const cacheKey = `transfers-${address}-${direction}-${limit}`;
+    const cacheKey = `${address}_${direction}_${limit}`;
 
-    // Check cache first
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      console.log(`Cache hit for ${cacheKey}`);
-      return cached;
+    // Check persistent cache first
+    const cachedData = await this.persistentCache.readTransfers(address, direction, limit);
+
+    if (cachedData && cachedData.transfers) {
+      console.log(`Persistent cache hit for transfers ${cacheKey} (${cachedData.recordCount} records)`);
+
+      // Trigger background update if cache is stale
+      const cacheAge = Date.now() - new Date(cachedData.lastUpdated).getTime();
+      if (cacheAge > this.cacheTTL && !this.isFetchingInBackground.get(cacheKey)) {
+        console.log(`Transfers cache is ${Math.round(cacheAge / 1000)}s old, triggering background update...`);
+        this.fetchAndCacheTransfersInBackground(address, direction, limit);
+      }
+
+      return cachedData.transfers;
     }
 
-    console.log(`Cache miss for ${cacheKey}, fetching from API...`);
+    // No cache exists - check if background fetch is already running
+    if (this.isFetchingInBackground.get(cacheKey)) {
+      console.log(`Background fetch in progress for transfers ${cacheKey}, returning empty...`);
+      return [];
+    }
+
+    // No cache and no fetch running - start background fetch and return empty
+    console.log(`No transfers cache for ${cacheKey}, starting background fetch...`);
+    this.fetchAndCacheTransfersInBackground(address, direction, limit);
+    return [];
+  }
+
+  /**
+   * Fetch transfers from API (used for both sync and background fetching)
+   */
+  private async fetchTransfers(
+    address: string,
+    direction: 'in' | 'out' | 'all' = 'all',
+    limit: number = 1000
+  ): Promise<TransferRecord[]> {
+    console.log(`Fetching transfers from API for ${address} (${direction}, limit ${limit})...`);
 
     try {
       let transfers: any[] = [];
@@ -197,15 +270,40 @@ export class TransferHistoryClient {
         };
       });
 
-      // Cache the result
-      this.cache.set(cacheKey, normalizedTransfers, this.cacheTTL);
-      console.log(`Cached ${normalizedTransfers.length} transfers for ${cacheKey}`);
+      // Cache to persistent storage
+      await this.persistentCache.writeTransfers(address, direction, limit, normalizedTransfers);
+      console.log(`Cached ${normalizedTransfers.length} transfers to persistent storage for ${address} (${direction})`);
 
       return normalizedTransfers;
     } catch (error) {
       console.error('Error fetching transfers:', error);
       throw new Error('Failed to fetch transfer history');
     }
+  }
+
+  /**
+   * Fetch and cache transfers in background (non-blocking)
+   */
+  private fetchAndCacheTransfersInBackground(address: string, direction: 'in' | 'out' | 'all', limit: number): void {
+    const cacheKey = `${address}_${direction}_${limit}`;
+
+    if (this.isFetchingInBackground.get(cacheKey)) {
+      return; // Already fetching
+    }
+
+    this.isFetchingInBackground.set(cacheKey, true);
+    console.log(`Starting background transfers fetch for ${cacheKey}...`);
+
+    this.fetchTransfers(address, direction, limit)
+      .then(() => {
+        console.log(`Background transfers fetch complete for ${cacheKey}`);
+      })
+      .catch((error) => {
+        console.error(`Background transfers fetch error for ${cacheKey}:`, error);
+      })
+      .finally(() => {
+        this.isFetchingInBackground.set(cacheKey, false);
+      });
   }
 
   /**

@@ -28,6 +28,8 @@ export class PersistentCache {
   private balancesPath: string;
   private tokenBalancesPath: string;
   private uniswapFeesDir: string;
+  private uniswapPositionsDir: string;
+  private transfersDir: string;
 
   constructor(cacheDir: string = './data/cache') {
     this.cacheDir = cacheDir;
@@ -37,6 +39,8 @@ export class PersistentCache {
     this.balancesPath = path.join(cacheDir, 'balances.json');
     this.tokenBalancesPath = path.join(cacheDir, 'token_balances.json');
     this.uniswapFeesDir = path.join(cacheDir, 'uniswap_fees');
+    this.uniswapPositionsDir = path.join(cacheDir, 'uniswap_positions');
+    this.transfersDir = path.join(cacheDir, 'transfers');
   }
 
   /**
@@ -46,6 +50,8 @@ export class PersistentCache {
     try {
       await fs.mkdir(this.cacheDir, { recursive: true });
       await fs.mkdir(this.uniswapFeesDir, { recursive: true });
+      await fs.mkdir(this.uniswapPositionsDir, { recursive: true });
+      await fs.mkdir(this.transfersDir, { recursive: true });
     } catch (error) {
       console.error('Failed to create cache directory:', error);
       throw error;
@@ -366,6 +372,66 @@ export class PersistentCache {
       fees,
       lastUpdated: new Date().toISOString(),
       recordCount: fees.length,
+    };
+    await fs.writeFile(filePath, JSON.stringify(cacheData, null, 2), 'utf-8');
+  }
+
+  /**
+   * Read Uniswap positions for a specific address from cache
+   */
+  async readUniswapPositions(address: string): Promise<any | null> {
+    try {
+      const filePath = path.join(this.uniswapPositionsDir, `${address}.json`);
+      const data = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(data);
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        return null; // File doesn't exist yet
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Write Uniswap positions for a specific address to cache
+   */
+  async writeUniswapPositions(address: string, positions: any[]): Promise<void> {
+    const filePath = path.join(this.uniswapPositionsDir, `${address}.json`);
+    const cacheData = {
+      positions,
+      lastUpdated: new Date().toISOString(),
+      recordCount: positions.length,
+    };
+    await fs.writeFile(filePath, JSON.stringify(cacheData, null, 2), 'utf-8');
+  }
+
+  /**
+   * Read transfers for a specific address + direction from cache
+   */
+  async readTransfers(address: string, direction: string, limit: number): Promise<any | null> {
+    try {
+      const fileName = `${address}_${direction}_${limit}.json`;
+      const filePath = path.join(this.transfersDir, fileName);
+      const data = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(data);
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        return null; // File doesn't exist yet
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Write transfers for a specific address + direction to cache
+   */
+  async writeTransfers(address: string, direction: string, limit: number, transfers: any[]): Promise<void> {
+    const fileName = `${address}_${direction}_${limit}.json`;
+    const filePath = path.join(this.transfersDir, fileName);
+    const cacheData = {
+      transfers,
+      lastUpdated: new Date().toISOString(),
+      recordCount: transfers.length,
     };
     await fs.writeFile(filePath, JSON.stringify(cacheData, null, 2), 'utf-8');
   }

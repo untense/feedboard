@@ -3,7 +3,18 @@ import { UniswapPositionsClient } from '../services/uniswapPositions.js';
 import type { TaostatsConfig } from '../types/index.js';
 
 export function createUniswapPositionsRoutes(config: TaostatsConfig) {
-  const client = new UniswapPositionsClient(config);
+  const client = new UniswapPositionsClient(config, 3600000); // 1 hour cache TTL
+
+  // Initialize persistent cache and start background updates
+  client.init().then(() => {
+    // Pre-fetch positions for known addresses in background
+    const trackedAddresses = [
+      '0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8', // Add your tracked addresses here
+    ];
+    client.startBackgroundUpdates(trackedAddresses);
+  }).catch((error) => {
+    console.error('Failed to initialize Uniswap positions client:', error);
+  });
 
   /**
    * GET /api/uniswap/positions/:address
