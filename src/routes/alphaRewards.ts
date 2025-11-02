@@ -6,7 +6,7 @@ export function createAlphaRewardsRouter(alphaRewardsClient: AlphaRewardsClient)
 
   /**
    * GET /api/alpha-rewards/:address
-   * Returns alpha token rewards for an EVM address
+   * Returns unclaimed alpha token reward amount for an EVM address in plain text
    */
   router.get('/:address', async (req: Request, res: Response) => {
     try {
@@ -14,37 +14,23 @@ export function createAlphaRewardsRouter(alphaRewardsClient: AlphaRewardsClient)
 
       // Validate address format (basic check for EVM address)
       if (!address.match(/^0x[a-fA-F0-9]{40}$/)) {
-        res.status(400).json({
-          error: 'Invalid address format',
-          message: 'Address must be a valid EVM address (0x...)',
-        });
+        res.status(400).type('text/plain').send('Error: Invalid address format. Address must be a valid EVM address (0x...)');
         return;
       }
 
       const rewards = await alphaRewardsClient.getAlphaRewards(address);
 
-      // Return as JSON
-      res.json({
-        success: true,
-        address,
-        rewards: {
-          timestamp: rewards.timestamp,
-          netuid: rewards.netuid,
-          amount: rewards.amount,
-          isClaimed: rewards.isClaimed,
-        },
-      });
+      // Return unclaimed amount as plain text
+      // If already claimed, return "0"
+      const unclaimedAmount = rewards.isClaimed ? '0' : rewards.amount;
+
+      res.type('text/plain');
+      res.send(unclaimedAmount);
     } catch (error) {
       console.error('Error in /alpha-rewards/:address endpoint:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const errorDetails = (error as any).response || (error as any).statusCode || '';
 
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch alpha rewards',
-        message: errorMessage,
-        details: errorDetails,
-      });
+      res.status(500).type('text/plain').send(`Error fetching alpha rewards: ${errorMessage}`);
     }
   });
 
