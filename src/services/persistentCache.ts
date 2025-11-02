@@ -30,6 +30,7 @@ export class PersistentCache {
   private uniswapFeesDir: string;
   private uniswapPositionsDir: string;
   private transfersDir: string;
+  private alphaRewardsDir: string;
 
   constructor(cacheDir: string = './data/cache') {
     this.cacheDir = cacheDir;
@@ -41,6 +42,7 @@ export class PersistentCache {
     this.uniswapFeesDir = path.join(cacheDir, 'uniswap_fees');
     this.uniswapPositionsDir = path.join(cacheDir, 'uniswap_positions');
     this.transfersDir = path.join(cacheDir, 'transfers');
+    this.alphaRewardsDir = path.join(cacheDir, 'alpha_rewards');
   }
 
   /**
@@ -52,6 +54,7 @@ export class PersistentCache {
       await fs.mkdir(this.uniswapFeesDir, { recursive: true });
       await fs.mkdir(this.uniswapPositionsDir, { recursive: true });
       await fs.mkdir(this.transfersDir, { recursive: true });
+      await fs.mkdir(this.alphaRewardsDir, { recursive: true });
     } catch (error) {
       console.error('Failed to create cache directory:', error);
       throw error;
@@ -432,6 +435,36 @@ export class PersistentCache {
       transfers,
       lastUpdated: new Date().toISOString(),
       recordCount: transfers.length,
+    };
+    await fs.writeFile(filePath, JSON.stringify(cacheData, null, 2), 'utf-8');
+  }
+
+  /**
+   * Read alpha rewards for a specific address from cache
+   */
+  async readAlphaRewards(address: string): Promise<any | null> {
+    try {
+      const filePath = path.join(this.alphaRewardsDir, `${address}.json`);
+      const data = await fs.readFile(filePath, 'utf-8');
+      return JSON.parse(data);
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        return null; // File doesn't exist yet
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Write alpha rewards for a specific address to cache
+   */
+  async writeAlphaRewards(address: string, rewards: any): Promise<void> {
+    const filePath = path.join(this.alphaRewardsDir, `${address}.json`);
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const cacheData = {
+      rewards,
+      lastCheckedDate: today,
+      lastUpdated: new Date().toISOString(),
     };
     await fs.writeFile(filePath, JSON.stringify(cacheData, null, 2), 'utf-8');
   }

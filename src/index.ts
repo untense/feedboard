@@ -5,6 +5,7 @@ import { TransferHistoryClient } from './services/transferHistory.js';
 import { BalanceClient } from './services/balance.js';
 import { TokenTransferClient } from './services/tokenTransfers.js';
 import { TokenBalanceClient } from './services/tokenBalance.js';
+import { AlphaRewardsClient } from './services/alphaRewards.js';
 import { PersistentCache } from './services/persistentCache.js';
 import { createPriceRouter } from './routes/price.js';
 import { createTransferRouter } from './routes/transfers.js';
@@ -12,6 +13,7 @@ import { createBalanceRouter } from './routes/balance.js';
 import { createTokenTransferRouter } from './routes/tokenTransfers.js';
 import { createUniswapPositionsRoutes } from './routes/uniswapPositions.js';
 import { createUniswapFeesRouter } from './routes/uniswapFees.js';
+import { createAlphaRewardsRouter } from './routes/alphaRewards.js';
 import { createAddressRoutes } from './routes/address.js';
 
 const app = express();
@@ -49,6 +51,18 @@ console.log('✓ Token balance client initialized with persistent cache and hour
 const tokenTransferClient = new TokenTransferClient(config.taostats, 60000); // 60s cache TTL
 console.log('✓ Token transfer client initialized');
 
+// Initialize Alpha Rewards client with smart UTC+0 checking
+const alphaRewardsClient = new AlphaRewardsClient(config.taostats);
+await alphaRewardsClient.init();
+console.log('✓ Alpha rewards client initialized with persistent cache');
+
+// Start background updates for alpha rewards (checks actively from UTC+0)
+const trackedAddresses = [
+  '0xC7d40db455F5BaEDB4a8348dE69e8527cD94AFD8', // Main LP address
+];
+alphaRewardsClient.startBackgroundUpdates(trackedAddresses);
+console.log('✓ Alpha rewards background checking started for tracked addresses');
+
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -59,6 +73,7 @@ app.use('/api/price', createPriceRouter(taostatsClient));
 app.use('/api/transfers', createTransferRouter(transferClient));
 app.use('/api/balance', createBalanceRouter(balanceClient, tokenBalanceClient));
 app.use('/api/token-transfers', createTokenTransferRouter(tokenTransferClient));
+app.use('/api/alpha-rewards', createAlphaRewardsRouter(alphaRewardsClient));
 
 // Initialize Uniswap positions client with background updates
 const uniswapPositionsRoutes = createUniswapPositionsRoutes(config.taostats);
@@ -95,6 +110,7 @@ app.get('/', (_req: Request, res: Response) => {
       tokenTransfersSS58Out: '/api/token-transfers/ss58/:tokenId/:address/out (not yet implemented)',
       uniswapPositions: '/api/uniswap/positions/:address',
       uniswapFees: '/api/uniswap/fees/:address',
+      alphaRewards: '/api/alpha-rewards/:address (EVM address)',
       addressConvert: '/api/address/convert/:address',
     },
   });
