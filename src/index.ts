@@ -6,6 +6,7 @@ import { BalanceClient } from './services/balance.js';
 import { TokenTransferClient } from './services/tokenTransfers.js';
 import { TokenBalanceClient } from './services/tokenBalance.js';
 import { AlphaRewardsClient } from './services/alphaRewards.js';
+import { SN10PriceClient } from './services/sn10Price.js';
 import { PersistentCache } from './services/persistentCache.js';
 import { createPriceRouter } from './routes/price.js';
 import { createTransferRouter } from './routes/transfers.js';
@@ -14,6 +15,7 @@ import { createTokenTransferRouter } from './routes/tokenTransfers.js';
 import { createUniswapPositionsRoutes } from './routes/uniswapPositions.js';
 import { createUniswapFeesRouter } from './routes/uniswapFees.js';
 import { createAlphaRewardsRouter } from './routes/alphaRewards.js';
+import { createSN10PriceRouter } from './routes/sn10Price.js';
 import { createAddressRoutes } from './routes/address.js';
 
 const app = express();
@@ -63,6 +65,10 @@ const trackedAddresses = [
 alphaRewardsClient.startBackgroundUpdates(trackedAddresses);
 console.log('✓ Alpha rewards background checking started for tracked addresses');
 
+// Initialize SN10 Price client
+const sn10PriceClient = new SN10PriceClient(config.taostats, 30000); // 30s cache TTL
+console.log('✓ SN10 price client initialized');
+
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -74,6 +80,7 @@ app.use('/api/transfers', createTransferRouter(transferClient));
 app.use('/api/balance', createBalanceRouter(balanceClient, tokenBalanceClient));
 app.use('/api/token-transfers', createTokenTransferRouter(tokenTransferClient));
 app.use('/api/alpha-rewards', createAlphaRewardsRouter(alphaRewardsClient));
+app.use('/api/sn10', createSN10PriceRouter(sn10PriceClient));
 
 // Initialize Uniswap positions client with background updates
 const uniswapPositionsRoutes = createUniswapPositionsRoutes(config.taostats);
@@ -111,6 +118,7 @@ app.get('/', (_req: Request, res: Response) => {
       uniswapPositions: '/api/uniswap/positions/:address',
       uniswapFees: '/api/uniswap/fees/:address',
       alphaRewards: '/api/alpha-rewards/:address (EVM address)',
+      sn10Price: '/api/sn10/price (SN10/TAO price from Uniswap V3)',
       addressConvert: '/api/address/convert/:address',
     },
   });
