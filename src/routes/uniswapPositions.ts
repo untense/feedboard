@@ -3,7 +3,7 @@ import { UniswapPositionsClient } from '../services/uniswapPositions.js';
 import type { TaostatsConfig } from '../types/index.js';
 
 export function createUniswapPositionsRoutes(config: TaostatsConfig) {
-  const client = new UniswapPositionsClient(config, 3600000); // 1 hour cache TTL
+  const client = new UniswapPositionsClient(config, 1800000, 1800000); // 30 minutes cache TTL and update interval
 
   // Initialize persistent cache and start background updates
   client.init().then(() => {
