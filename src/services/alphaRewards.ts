@@ -148,13 +148,12 @@ export class AlphaRewardsClient {
     if (cachedData && cachedData.lastCheckedDate === today && cachedData.rewards) {
       console.log(`Persistent cache hit for alpha rewards ${normalizedAddress}`);
 
-      // If not claimed yet, trigger background check during active hours
-      if (!cachedData.rewards.isClaimed) {
-        const utcHour = new Date().getUTCHours();
-        if (utcHour >= 0 && utcHour < 6 && !this.isFetchingInBackground.get(normalizedAddress)) {
-          console.log('Unclaimed rewards detected during active window, triggering background check...');
-          this.fetchAndCacheRewardsInBackground(normalizedAddress);
-        }
+      // During active hours (UTC 0-6), always trigger background check to detect new rewards
+      // This ensures we refresh even if previous cache shows claimed, catching new daily rewards
+      const utcHour = new Date().getUTCHours();
+      if (utcHour >= 0 && utcHour < 6 && !this.isFetchingInBackground.get(normalizedAddress)) {
+        console.log('Active window detected, triggering background check for latest rewards...');
+        this.fetchAndCacheRewardsInBackground(normalizedAddress);
       }
 
       return cachedData.rewards;
