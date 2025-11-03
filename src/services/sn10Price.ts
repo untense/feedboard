@@ -34,13 +34,30 @@ export class SN10PriceClient {
         throw new Error(`Taostats API error: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data: unknown = await response.json();
 
-      if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
+      // Type guard for API response
+      if (
+        !data ||
+        typeof data !== 'object' ||
+        !('data' in data) ||
+        !Array.isArray(data.data) ||
+        data.data.length === 0
+      ) {
         throw new Error('No subnet data returned from Taostats API');
       }
 
       const subnetData = data.data[0];
+
+      // Type guard for subnet data
+      if (
+        !subnetData ||
+        typeof subnetData !== 'object' ||
+        !('price' in subnetData)
+      ) {
+        throw new Error('Invalid subnet data structure');
+      }
+
       const price = subnetData.price;
 
       if (!price) {
@@ -48,7 +65,7 @@ export class SN10PriceClient {
       }
 
       // Convert to string with reasonable precision
-      const priceString = parseFloat(price).toFixed(9);
+      const priceString = parseFloat(String(price)).toFixed(9);
       console.log(`SN10/TAO price from Taostats: ${priceString}`);
 
       // Cache the result
