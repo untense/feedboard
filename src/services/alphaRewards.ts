@@ -205,11 +205,15 @@ export class AlphaRewardsClient {
       // Convert from raw amount (9 decimals for alpha tokens, like TAO rao)
       const amountInAlpha = Number(stakeAmount) / 1e9;
 
-      // Get previous day's amount to detect new rewards
+      // Get previous day's amount to detect if rewards were claimed
       const cachedData = await this.persistentCache.readAlphaRewards(address);
       const previousAmount = cachedData?.rewards ? parseFloat(cachedData.rewards.amount) : 0;
 
-      const isClaimed = amountInAlpha <= previousAmount;
+      // Mark as claimed only if:
+      // 1. Amount is very small (< 1 SN10) - likely claimed or no rewards
+      // 2. Amount dropped significantly from previous (> 90% drop) - indicates claim happened
+      // Otherwise, small variations are normal and should show as unclaimed
+      const isClaimed = amountInAlpha < 1 || (previousAmount > 0 && amountInAlpha < previousAmount * 0.1);
 
       const rewards: AlphaRewardRecord = {
         timestamp: new Date().toISOString(),
