@@ -1,4 +1,5 @@
 import { JsonRpcProvider, Contract } from 'ethers';
+import { blake2b } from 'blakejs';
 import type { TaostatsConfig } from '../types/index.js';
 import { PersistentCache } from './persistentCache.js';
 
@@ -25,6 +26,9 @@ export class AlphaRewardsClient {
 
   // TaoFi subnet ID
   private readonly TAOFI_NETUID = 10;
+
+  // TaoFi subnet 10 hotkey (from API)
+  private readonly TAOFI_HOTKEY = '0xacf34e305f1474e4817a66352af736fe6b0bcf5cdfeef18c441e24645c742339';
 
   // Staking precompile ABI (minimal - only needed functions)
   private readonly STAKING_ABI = [
@@ -111,12 +115,22 @@ export class AlphaRewardsClient {
   }
 
   /**
-   * Convert EVM address to bytes32 coldkey format
+   * Derive coldkey from EVM address using TaoFi's algorithm
+   * Coldkey = Blake2b-256("evm:" + address_bytes)
    */
   private evmAddressToColdkey(address: string): string {
-    // Remove 0x prefix if present and pad to 64 characters (32 bytes)
-    const addr = address.toLowerCase().replace('0x', '').padStart(64, '0');
-    return '0x' + addr;
+    // Normalize address (lowercase, remove 0x)
+    const normalizedAddr = address.toLowerCase().replace('0x', '');
+
+    // Create input: "evm:" prefix + address bytes
+    const prefix = Buffer.from('evm:', 'utf8');
+    const addrBytes = Buffer.from(normalizedAddr, 'hex');
+    const input = Buffer.concat([prefix, addrBytes]);
+
+    // Hash with Blake2b-256 (32 byte output)
+    const hash = blake2b(input, undefined, 32);
+
+    return '0x' + Buffer.from(hash).toString('hex');
   }
 
   /**
@@ -176,14 +190,20 @@ export class AlphaRewardsClient {
     console.log(`Fetching alpha rewards from staking precompile for ${address}...`);
 
     try {
-      // Convert EVM address to coldkey format
+      // Derive coldkey from EVM address using Blake2b hash
       const coldkey = this.evmAddressToColdkey(address);
 
-      // Query total coldkey stake (includes all alpha tokens across all subnets)
-      const totalStake = await this.stakingPrecompile.getTotalColdkeyStake(coldkey);
+      console.log(`Derived coldkey: ${coldkey}`);
+
+      // Query stake amount for subnet 10 (TaoFi)
+      const stakeAmount = await this.stakingPrecompile.getStake(
+        this.TAOFI_HOTKEY,
+        coldkey,
+        this.TAOFI_NETUID
+      );
 
       // Convert from raw amount (9 decimals for alpha tokens, like TAO rao)
-      const amountInAlpha = Number(totalStake) / 1e9;
+      const amountInAlpha = Number(stakeAmount) / 1e9;
 
       // Get previous day's amount to detect new rewards
       const cachedData = await this.persistentCache.readAlphaRewards(address);
