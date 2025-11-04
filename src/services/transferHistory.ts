@@ -208,6 +208,21 @@ export class TransferHistoryClient {
           console.error('Error fetching delegation transfers (continuing with regular transfers):', error);
         }
 
+        // Sort all transfers by timestamp (descending - newest first) or block number if timestamp is missing
+        transfers.sort((a: any, b: any) => {
+          const aTime = a.timestamp || a.created_at || a.time || '';
+          const bTime = b.timestamp || b.created_at || b.time || '';
+
+          if (aTime && bTime) {
+            return new Date(bTime).getTime() - new Date(aTime).getTime();
+          }
+
+          // Fallback to block number if timestamps are missing
+          const aBlock = a.block_number || a.blockNumber || a.block || 0;
+          const bBlock = b.block_number || b.blockNumber || b.block || 0;
+          return bBlock - aBlock;
+        });
+
         if (transfers.length > 0) {
           console.log(`First transfer keys:`, Object.keys(transfers[0]));
           console.log(`First transfer sample:`, JSON.stringify(transfers[0]).substring(0, 200));
