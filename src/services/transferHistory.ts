@@ -330,7 +330,7 @@ export class TransferHistoryClient {
       });
 
       // Sort by timestamp descending
-      delegationTransfers.sort((a, b) => {
+      delegationTransfers.sort((a: TransferRecord, b: TransferRecord) => {
         if (a.timestamp && b.timestamp) {
           return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
         }
