@@ -9,7 +9,7 @@ import { AlphaRewardsClient } from './services/alphaRewards.js';
 import { SN10PriceClient } from './services/sn10Price.js';
 import { PersistentCache } from './services/persistentCache.js';
 import { createPriceRouter } from './routes/price.js';
-import { createTransferRouter } from './routes/transfers.js';
+import { createTransferRouter, createDelegationRouter } from './routes/transfers.js';
 import { createBalanceRouter } from './routes/balance.js';
 import { createTokenTransferRouter } from './routes/tokenTransfers.js';
 import { createUniswapPositionsRoutes } from './routes/uniswapPositions.js';
@@ -77,6 +77,7 @@ app.get('/health', (_req: Request, res: Response) => {
 // API routes
 app.use('/api/price', createPriceRouter(taostatsClient));
 app.use('/api/transfers', createTransferRouter(transferClient));
+app.use('/api/delegations', createDelegationRouter(transferClient));
 app.use('/api/balance', createBalanceRouter(balanceClient, tokenBalanceClient));
 app.use('/api/token-transfers', createTokenTransferRouter(tokenTransferClient));
 app.use('/api/alpha-rewards', createAlphaRewardsRouter(alphaRewardsClient));

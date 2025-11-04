@@ -108,11 +108,31 @@ export function createTransferRouter(transferClient: TransferHistoryClient): Rou
     }
   });
 
+  return router;
+}
+
+/**
+ * Create router for delegation transfers
+ */
+export function createDelegationRouter(transferClient: TransferHistoryClient): Router {
+  const router = Router();
+
+  /**
+   * Helper function to convert transfers to CSV format
+   */
+  function transfersToCSV(transfers: any[]): string {
+    const csvHeader = 'timestamp,from,to,amount,extrinsicId,blockNumber\n';
+    const csvRows = transfers.map(t =>
+      `${t.timestamp},${t.from},${t.to},${t.amount},${t.extrinsicId || ''},${t.blockNumber || ''}`
+    ).join('\n');
+    return csvHeader + csvRows;
+  }
+
   /**
    * GET /api/delegations/ss58/:address
    * Returns delegation transfers (alpha token swaps, etc.) for an SS58 address in CSV format
    */
-  router.get('/delegations/ss58/:address', async (req: Request, res: Response) => {
+  router.get('/ss58/:address', async (req: Request, res: Response) => {
     try {
       const { address } = req.params;
       const delegations = await transferClient.getDelegations(address);
