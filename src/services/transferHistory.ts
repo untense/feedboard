@@ -182,47 +182,6 @@ export class TransferHistoryClient {
         transfers = response.data.data || [];
         console.log(`SS58 API returned ${transfers.length} regular transfers`);
 
-        // Also fetch delegation transfers (alpha token swaps, etc.)
-        try {
-          const delegationResponse = await (this.client as any).httpClient.get('/api/delegation/v1', {
-            nominator: address,
-            is_transfer: true,
-            limit,
-            page: 1,
-          });
-
-          if (delegationResponse.success && delegationResponse.data?.data) {
-            const delegationTransfers = delegationResponse.data.data.map((dt: any) => ({
-              from: dt.transfer_address?.ss58 || dt.transfer_address?.hex || '',
-              to: dt.nominator?.ss58 || dt.nominator?.hex || address,
-              amount: dt.amount || '0',
-              extrinsic_id: dt.extrinsic_id || '',
-              block_number: dt.block_number || 0,
-              timestamp: dt.timestamp || '',
-            }));
-
-            console.log(`Fetched ${delegationTransfers.length} delegation transfers`);
-            transfers = [...transfers, ...delegationTransfers];
-          }
-        } catch (error) {
-          console.error('Error fetching delegation transfers (continuing with regular transfers):', error);
-        }
-
-        // Sort all transfers by timestamp (descending - newest first) or block number if timestamp is missing
-        transfers.sort((a: any, b: any) => {
-          const aTime = a.timestamp || a.created_at || a.time || '';
-          const bTime = b.timestamp || b.created_at || b.time || '';
-
-          if (aTime && bTime) {
-            return new Date(bTime).getTime() - new Date(aTime).getTime();
-          }
-
-          // Fallback to block number if timestamps are missing
-          const aBlock = a.block_number || a.blockNumber || a.block || 0;
-          const bBlock = b.block_number || b.blockNumber || b.block || 0;
-          return bBlock - aBlock;
-        });
-
         if (transfers.length > 0) {
           console.log(`First transfer keys:`, Object.keys(transfers[0]));
           console.log(`First transfer sample:`, JSON.stringify(transfers[0]).substring(0, 200));
@@ -333,5 +292,56 @@ export class TransferHistoryClient {
    */
   async getOutgoingTransfers(address: string, limit: number = 1000): Promise<TransferRecord[]> {
     return this.getTransfers(address, 'out', limit);
+  }
+
+  /**
+   * Get delegation transfers (alpha token swaps, etc.) for an address
+   * Only works for SS58 addresses
+   */
+  async getDelegations(address: string, limit: number = 1000): Promise<TransferRecord[]> {
+    console.log(`Fetching delegation transfers for ${address}...`);
+
+    try {
+      const delegationResponse = await (this.client as any).httpClient.get('/api/delegation/v1', {
+        nominator: address,
+        is_transfer: true,
+        limit,
+        page: 1,
+      });
+
+      if (!delegationResponse.success || !delegationResponse.data?.data) {
+        return [];
+      }
+
+      const delegationTransfers = delegationResponse.data.data.map((dt: any) => {
+        const from = dt.transfer_address?.ss58 || dt.transfer_address?.hex || '';
+        const to = dt.nominator?.ss58 || dt.nominator?.hex || address;
+        const rawAmount = dt.amount || '0';
+        const amountInTao = (Number(rawAmount) / 1e9).toString();
+
+        return {
+          from: String(from),
+          to: String(to),
+          amount: amountInTao,
+          extrinsicId: dt.extrinsic_id || '',
+          blockNumber: dt.block_number || 0,
+          timestamp: dt.timestamp || '',
+        };
+      });
+
+      // Sort by timestamp descending
+      delegationTransfers.sort((a, b) => {
+        if (a.timestamp && b.timestamp) {
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        }
+        return b.blockNumber - a.blockNumber;
+      });
+
+      console.log(`Fetched ${delegationTransfers.length} delegation transfers`);
+      return delegationTransfers;
+    } catch (error) {
+      console.error('Error fetching delegation transfers:', error);
+      return [];
+    }
   }
 }

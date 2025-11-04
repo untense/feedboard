@@ -108,5 +108,25 @@ export function createTransferRouter(transferClient: TransferHistoryClient): Rou
     }
   });
 
+  /**
+   * GET /api/delegations/ss58/:address
+   * Returns delegation transfers (alpha token swaps, etc.) for an SS58 address in CSV format
+   */
+  router.get('/delegations/ss58/:address', async (req: Request, res: Response) => {
+    try {
+      const { address } = req.params;
+      const delegations = await transferClient.getDelegations(address);
+
+      const csv = transfersToCSV(delegations);
+
+      // Return as plain text so it displays in browser
+      res.type('text/plain');
+      res.send(csv);
+    } catch (error) {
+      console.error('Error in /delegations/ss58/:address endpoint:', error);
+      res.status(500).type('text/plain').send('Error fetching delegations');
+    }
+  });
+
   return router;
 }
