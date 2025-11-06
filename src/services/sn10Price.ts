@@ -4,7 +4,7 @@ import { Cache } from './cache.js';
 export class SN10PriceClient {
   private cache: Cache<string>;
   private cacheTTL: number;
-  private readonly TAOSTATS_API_URL = 'https://api.taostats.io/api/dtao/dtaoSubnets';
+  private readonly TAOSTATS_API_URL = 'https://api.taostats.io/api/dtao/pool/latest/v1';
   private config: TaostatsConfig;
 
   constructor(config: TaostatsConfig, cacheTTL: number = 30000) {
@@ -46,28 +46,15 @@ export class SN10PriceClient {
       if (
         !data ||
         typeof data !== 'object' ||
-        !('data' in data) ||
-        !Array.isArray(data.data) ||
-        data.data.length === 0
+        !('price' in data)
       ) {
-        throw new Error('No subnet data returned from Taostats API');
+        throw new Error('Invalid pool data returned from Taostats API');
       }
 
-      const subnetData = data.data[0];
-
-      // Type guard for subnet data
-      if (
-        !subnetData ||
-        typeof subnetData !== 'object' ||
-        !('price' in subnetData)
-      ) {
-        throw new Error('Invalid subnet data structure');
-      }
-
-      const price = subnetData.price;
+      const price = data.price;
 
       if (!price) {
-        throw new Error('No price field in subnet data');
+        throw new Error('No price field in pool data');
       }
 
       // Convert to string with reasonable precision
