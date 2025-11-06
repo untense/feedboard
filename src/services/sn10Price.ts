@@ -7,10 +7,10 @@ export class SN10PriceClient {
   private readonly TAOSTATS_API_URL = 'https://api.taostats.io/api/dtao/pool/latest/v1';
   private config: TaostatsConfig;
 
-  constructor(config: TaostatsConfig, cacheTTL: number = 30000) {
+  constructor(config: TaostatsConfig, cacheTTL: number = 300000) {
     this.config = config;
     this.cache = new Cache<string>();
-    this.cacheTTL = cacheTTL; // 30 seconds default
+    this.cacheTTL = cacheTTL; // 5 minutes default (optimized for rate limits)
   }
 
   /**

@@ -66,7 +66,7 @@ alphaRewardsClient.startBackgroundUpdates(trackedAddresses);
 console.log('✓ Alpha rewards background checking started for tracked addresses');
 
 // Initialize SN10 Price client
-const sn10PriceClient = new SN10PriceClient(config.taostats, 30000); // 30s cache TTL
+const sn10PriceClient = new SN10PriceClient(config.taostats, 300000); // 5 minute cache TTL (optimized for rate limits)
 console.log('✓ SN10 price client initialized');
 
 // Health check endpoint
