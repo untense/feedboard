@@ -4,9 +4,11 @@ import { Cache } from './cache.js';
 export class SN10PriceClient {
   private cache: Cache<string>;
   private cacheTTL: number;
-  private readonly TAOSTATS_API_URL = 'https://taostats.io/api/dtao/dtaoSubnets';
+  private readonly TAOSTATS_API_URL = 'https://api.taostats.io/api/dtao/dtaoSubnets';
+  private config: TaostatsConfig;
 
   constructor(config: TaostatsConfig, cacheTTL: number = 30000) {
+    this.config = config;
     this.cache = new Cache<string>();
     this.cacheTTL = cacheTTL; // 30 seconds default
   }
@@ -28,7 +30,11 @@ export class SN10PriceClient {
     console.log('Cache miss for SN10 price, fetching from Taostats API...');
 
     try {
-      const response = await fetch(`${this.TAOSTATS_API_URL}?netuid=10`);
+      const response = await fetch(`${this.TAOSTATS_API_URL}?netuid=10`, {
+        headers: {
+          'Authorization': this.config.apiKey
+        }
+      });
 
       if (!response.ok) {
         throw new Error(`Taostats API error: ${response.status}`);
