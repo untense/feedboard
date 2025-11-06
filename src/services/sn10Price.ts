@@ -42,19 +42,32 @@ export class SN10PriceClient {
 
       const data: unknown = await response.json();
 
-      // Type guard for API response
+      // Type guard for API response (structure: { pagination: {...}, data: [...] })
       if (
         !data ||
         typeof data !== 'object' ||
-        !('price' in data)
+        !('data' in data) ||
+        !Array.isArray(data.data) ||
+        data.data.length === 0
       ) {
         throw new Error('Invalid pool data returned from Taostats API');
       }
 
-      const price = data.price;
+      const poolData = data.data[0];
+
+      // Type guard for pool data
+      if (
+        !poolData ||
+        typeof poolData !== 'object' ||
+        !('price' in poolData)
+      ) {
+        throw new Error('No price field in pool data');
+      }
+
+      const price = poolData.price;
 
       if (!price) {
-        throw new Error('No price field in pool data');
+        throw new Error('Price is null or undefined');
       }
 
       // Convert to string with reasonable precision
